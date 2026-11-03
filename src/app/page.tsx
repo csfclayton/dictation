@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
-// 預設詞語庫
-const defaultWords = [
+type WordItem = { text: string; jyutping?: string };
+
+const defaultWords: WordItem[] = [
   { text: "爸爸", jyutping: "baa4 baa1" },
   { text: "媽媽", jyutping: "maa4 maa1" },
   { text: "哥哥", jyutping: "go4 go1" },
@@ -37,16 +38,23 @@ const defaultWords = [
   { text: "狗", jyutping: "gau2" },
 ];
 
-type Mode = "menu" | "words" | "ocr" | "practice";
+const STORAGE_KEY = "dictation_wordbank_v1";
+
+type Mode = "menu" | "manage" | "ocr" | "practice";
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("menu");
-  const [practiceList, setPracticeList] = useState<{ text: string; jyutping?: string }[]>([]);
+  const [wordBank, setWordBank] = useState<WordItem[]>(defaultWords);
+  const [practiceList, setPracticeList] = useState<WordItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [input, setInput] = useState("");
   const [result, setResult] = useState<"correct" | "wrong" | null>(null);
   const [score, setScore] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // 管理詞庫用
+  const [newText, setNewText] = useState("");
+  const [newJyutping, setNewJyutping] = useState("");
 
   // OCR related
   const [ocrText, setOcrText] = useState("");
@@ -54,9 +62,33 @@ export default function Home() {
   const [ocrProgress, setOcrProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 載入 localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setWordBank(parsed);
+        }
+      }
+    } catch (e) {
+      console.error("載入詞庫失敗", e);
+    }
+  }, []);
+
+  // 儲存到 localStorage
+  const saveWordBank = (list: WordItem[]) => {
+    setWordBank(list);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    } catch (e) {
+      console.error("儲存詞庫失敗", e);
+    }
+  };
+
   const currentItem = practiceList[currentIndex];
 
-  // 播放廣東話
   const playAudio = (text: string) => {
     if (!("speechSynthesis" in window)) {
       alert("你的瀏覽器不支援語音合成");
@@ -88,9 +120,13 @@ export default function Home() {
     setCurrentIndex((i) => (i + 1) % practiceList.length);
   };
 
-  // 開始詞語練習
+  // 開始用目前詞庫練習
   const startWordsPractice = () => {
-    setPracticeList(defaultWords);
+    if (wordBank.length === 0) {
+      alert("詞庫係空嘅，請先加入詞語");
+      return;
+    }
+    setPracticeList([...wordBank]);
     setCurrentIndex(0);
     setScore(0);
     setInput("");
@@ -98,7 +134,38 @@ export default function Home() {
     setMode("practice");
   };
 
-  // 處理影相 / 上傳
+  // 新增詞語
+  const addWord = () => {
+    const text = newText.trim();
+    if (!text) {
+      alert("請輸入中文詞語");
+      return;
+    }
+    // 避免重複
+    if (wordBank.some((w) => w.text === text)) {
+      alert("呢個詞語已經存在");
+      return;
+    }
+    const newList = [...wordBank, { text, jyutping: newJyutping.trim() || undefined }];
+    saveWordBank(newList);
+    setNewText("");
+    setNewJyutping("");
+  };
+
+  // 刪除詞語
+  const deleteWord = (index: number) => {
+    if (!confirm(`確定刪除「${wordBank[index].text}」？`)) return;
+    const newList = wordBank.filter((_, i) => i !== index);
+    saveWordBank(newList);
+  };
+
+  // 還原預設
+  const resetToDefault = () => {
+    if (!confirm("確定還原成預設詞庫？你自己加嘅詞語會消失。")) return;
+    saveWordBank([...defaultWords]);
+  };
+
+  // OCR
   const handleImage = async (file: File) => {
     setOcrStatus("loading");
     setOcrProgress(0);
@@ -121,7 +188,6 @@ export default function Home() {
 
       await worker.terminate();
 
-      // 簡單清理
       const cleaned = text
         .replace(/\n{3,}/g, "\n\n")
         .replace(/[ \t]+/g, " ")
@@ -138,16 +204,12 @@ export default function Home() {
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      handleImage(file);
-    }
+    if (file) handleImage(file);
   };
 
-  // 將確認後的文字轉成練習列表（按句分割）
   const startFromOcr = () => {
     if (!ocrText.trim()) return;
 
-    // 用中文標點分句
     const sentences = ocrText
       .split(/(?<=[。！？\n])\s*/)
       .map((s) => s.trim())
@@ -172,15 +234,25 @@ export default function Home() {
   if (mode === "menu") {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-amber-50">
-        <div className="bg-white rounded-3xl shadow-xl p-8 max-w-md w-full text-center space-y-6">
+        <div className="bg-white rounded-3xl shadow-xl p-8 max-w-md w-full text-center space-y-4">
           <h1 className="text-3xl font-bold text-orange-600">香港小學默書練習</h1>
-          <p className="text-gray-500">廣東話 · 繁體中文</p>
+          <p className="text-gray-500 mb-2">廣東話 · 繁體中文</p>
 
           <button
             onClick={startWordsPractice}
             className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xl font-semibold py-4 rounded-2xl"
           >
-            詞語練習（內建詞庫）
+            開始詞語練習
+            <div className="text-sm font-normal opacity-90 mt-1">
+              目前詞庫有 {wordBank.length} 個詞
+            </div>
+          </button>
+
+          <button
+            onClick={() => setMode("manage")}
+            className="w-full bg-purple-500 hover:bg-purple-600 text-white text-xl font-semibold py-4 rounded-2xl"
+          >
+            📚 詞庫管理
           </button>
 
           <button
@@ -191,12 +263,91 @@ export default function Home() {
             }}
             className="w-full bg-blue-500 hover:bg-blue-600 text-white text-xl font-semibold py-4 rounded-2xl"
           >
-            📸 影相匯入課文（整句/段）
+            📸 影相匯入課文
           </button>
 
           <p className="text-xs text-gray-400 mt-4">
-            影相功能使用免費 Tesseract OCR，第一次使用需下載語言模型（約 20–40MB）
+            詞庫會自動儲存在呢部手機 / 電腦
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 詞庫管理頁面
+  if (mode === "manage") {
+    return (
+      <div className="min-h-screen p-4 bg-amber-50">
+        <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-5 space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-orange-600">詞庫管理</h2>
+            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">
+              ← 返回
+            </button>
+          </div>
+
+          <div className="text-sm text-gray-600">
+            目前共有 <span className="font-bold text-orange-600">{wordBank.length}</span> 個詞語
+          </div>
+
+          {/* 新增區域 */}
+          <div className="border-2 border-dashed border-orange-200 rounded-2xl p-4 space-y-3">
+            <div className="font-medium text-gray-700">新增詞語</div>
+            <input
+              type="text"
+              value={newText}
+              onChange={(e) => setNewText(e.target.value)}
+              placeholder="中文詞語（必填）"
+              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-lg outline-none focus:border-orange-400"
+            />
+            <input
+              type="text"
+              value={newJyutping}
+              onChange={(e) => setNewJyutping(e.target.value)}
+              placeholder="粵拼（可選，例如 baa4 baa1）"
+              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
+            />
+            <button
+              onClick={addWord}
+              className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl"
+            >
+              ＋ 加入詞庫
+            </button>
+          </div>
+
+          {/* 詞語列表 */}
+          <div className="max-h-80 overflow-y-auto space-y-2">
+            {wordBank.length === 0 ? (
+              <div className="text-center text-gray-400 py-8">詞庫係空嘅</div>
+            ) : (
+              wordBank.map((w, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between bg-orange-50 rounded-xl px-4 py-3"
+                >
+                  <div>
+                    <div className="text-lg font-medium">{w.text}</div>
+                    {w.jyutping && (
+                      <div className="text-sm text-gray-500">{w.jyutping}</div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => deleteWord(i)}
+                    className="text-red-500 text-sm px-3 py-1 rounded-lg hover:bg-red-50"
+                  >
+                    刪除
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <button
+            onClick={resetToDefault}
+            className="w-full border-2 border-gray-300 text-gray-600 py-3 rounded-xl text-sm"
+          >
+            還原預設詞庫
+          </button>
         </div>
       </div>
     );
@@ -209,10 +360,7 @@ export default function Home() {
         <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-5">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-orange-600">影相匯入課文</h2>
-            <button
-              onClick={() => setMode("menu")}
-              className="text-gray-500 text-sm"
-            >
+            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">
               ← 返回
             </button>
           </div>
@@ -268,7 +416,7 @@ export default function Home() {
           )}
 
           <p className="text-xs text-gray-400">
-            提示：影相時盡量影清晰、光線充足、字體正，識別會準確啲。識別後記得檢查同修改。
+            提示：影相時盡量影清晰、光線充足、字體正，識別會準確啲。
           </p>
         </div>
       </div>
@@ -280,10 +428,7 @@ export default function Home() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-amber-50">
       <div className="bg-white rounded-3xl shadow-xl p-6 max-w-md w-full text-center">
         <div className="flex justify-between items-center mb-4">
-          <button
-            onClick={() => setMode("menu")}
-            className="text-gray-500 text-sm"
-          >
+          <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">
             ← 返回選單
           </button>
           <div className="text-sm text-gray-600">
@@ -300,7 +445,7 @@ export default function Home() {
         </button>
 
         <div className="mb-3 text-left text-sm text-gray-500 px-1">
-          {currentItem?.text.length > 15 ? "請默寫整句：" : "請默寫："}
+          {currentItem && currentItem.text.length > 15 ? "請默寫整句：" : "請默寫："}
         </div>
 
         <textarea
@@ -335,10 +480,17 @@ export default function Home() {
                 : "bg-red-100 text-red-700"
             }`}
           >
-            {result === "correct" ? "正確！👍" : (
+            {result === "correct" ? (
+              "正確！👍"
+            ) : (
               <>
                 <div>正確答案：</div>
                 <div className="mt-1 text-lg break-words">{currentItem.text}</div>
+                {currentItem.jyutping && (
+                  <div className="text-sm mt-1 text-gray-600">
+                    粵拼：{currentItem.jyutping}
+                  </div>
+                )}
               </>
             )}
           </div>
