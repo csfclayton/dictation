@@ -1,112 +1,169 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 type WordItem = { text: string; jyutping?: string };
 
-const defaultWords: WordItem[] = [
-  { text: "爸爸", jyutping: "baa4 baa1" },
-  { text: "媽媽", jyutping: "maa4 maa1" },
-  { text: "哥哥", jyutping: "go4 go1" },
-  { text: "姐姐", jyutping: "ze4 ze1" },
-  { text: "弟弟", jyutping: "dai6 dai2" },
-  { text: "妹妹", jyutping: "mui6 mui2" },
-  { text: "學校", jyutping: "hok6 haau6" },
-  { text: "老師", jyutping: "lou5 si1" },
-  { text: "同學", jyutping: "tung4 hok6" },
-  { text: "書包", jyutping: "syu1 baau1" },
-  { text: "功課", jyutping: "gung1 fo3" },
-  { text: "默書", jyutping: "mak6 syu1" },
-  { text: "練習", jyutping: "lin6 zaap6" },
-  { text: "一", jyutping: "jat1" },
-  { text: "二", jyutping: "ji6" },
-  { text: "三", jyutping: "saam1" },
-  { text: "四", jyutping: "sei3" },
-  { text: "五", jyutping: "ng5" },
-  { text: "紅色", jyutping: "hung4 sik1" },
-  { text: "黃色", jyutping: "wong4 sik1" },
-  { text: "藍色", jyutping: "laam4 sik1" },
-  { text: "香港", jyutping: "hoeng1 gong2" },
-  { text: "廣東話", jyutping: "gwong2 dung1 waa2" },
-  { text: "朋友", jyutping: "pang4 jau5" },
-  { text: "今天", jyutping: "gam1 tin1" },
-  { text: "太陽", jyutping: "taai3 joeng4" },
-  { text: "水", jyutping: "seoi2" },
-  { text: "飯", jyutping: "faan6" },
-  { text: "書", jyutping: "syu1" },
-  { text: "貓", jyutping: "maau1" },
-  { text: "狗", jyutping: "gau2" },
+type WordGroup = {
+  id: string;
+  name: string;
+  words: WordItem[];
+};
+
+const defaultGroups: WordGroup[] = [
+  {
+    id: "default",
+    name: "預設詞庫",
+    words: [
+      { text: "爸爸", jyutping: "baa4 baa1" },
+      { text: "媽媽", jyutping: "maa4 maa1" },
+      { text: "哥哥", jyutping: "go4 go1" },
+      { text: "姐姐", jyutping: "ze4 ze1" },
+      { text: "弟弟", jyutping: "dai6 dai2" },
+      { text: "妹妹", jyutping: "mui6 mui2" },
+      { text: "學校", jyutping: "hok6 haau6" },
+      { text: "老師", jyutping: "lou5 si1" },
+      { text: "同學", jyutping: "tung4 hok6" },
+      { text: "書包", jyutping: "syu1 baau1" },
+      { text: "功課", jyutping: "gung1 fo3" },
+      { text: "默書", jyutping: "mak6 syu1" },
+      { text: "練習", jyutping: "lin6 zaap6" },
+      { text: "香港", jyutping: "hoeng1 gong2" },
+      { text: "廣東話", jyutping: "gwong2 dung1 waa2" },
+      { text: "朋友", jyutping: "pang4 jau5" },
+      { text: "今天", jyutping: "gam1 tin1" },
+      { text: "太陽", jyutping: "taai3 joeng4" },
+      { text: "水", jyutping: "seoi2" },
+      { text: "飯", jyutping: "faan6" },
+      { text: "書", jyutping: "syu1" },
+      { text: "貓", jyutping: "maau1" },
+      { text: "狗", jyutping: "gau2" },
+    ],
+  },
 ];
 
-const STORAGE_KEY = "dictation_wordbank_v1";
+const STORAGE_KEY = "dictation_groups_v2";
 
-type Mode = "menu" | "manage" | "ocr" | "practice";
+type Mode = "menu" | "manage" | "select" | "ocr" | "practice";
+
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("menu");
-  const [wordBank, setWordBank] = useState<WordItem[]>(defaultWords);
+  const [groups, setGroups] = useState<WordGroup[]>(defaultGroups);
+  const [activeGroupId, setActiveGroupId] = useState<string>("default");
+
+  // 練習相關
   const [practiceList, setPracticeList] = useState<WordItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [input, setInput] = useState("");
   const [result, setResult] = useState<"correct" | "wrong" | null>(null);
   const [score, setScore] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [speechRate, setSpeechRate] = useState(0.85);
 
-  // 管理詞庫用
+  // 管理用
+  const [newGroupName, setNewGroupName] = useState("");
   const [newText, setNewText] = useState("");
   const [newJyutping, setNewJyutping] = useState("");
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editGroupName, setEditGroupName] = useState("");
 
-  // OCR related
+  // 選擇練習詞庫
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(["default"]);
+
+  // OCR
   const [ocrText, setOcrText] = useState("");
   const [ocrStatus, setOcrStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [ocrProgress, setOcrProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 載入 localStorage
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // 載入
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setWordBank(parsed);
+          setGroups(parsed);
+          setActiveGroupId(parsed[0].id);
+          setSelectedGroupIds([parsed[0].id]);
         }
       }
     } catch (e) {
-      console.error("載入詞庫失敗", e);
+      console.error(e);
     }
   }, []);
 
-  // 儲存到 localStorage
-  const saveWordBank = (list: WordItem[]) => {
-    setWordBank(list);
+  const saveGroups = (newGroups: WordGroup[]) => {
+    setGroups(newGroups);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newGroups));
     } catch (e) {
-      console.error("儲存詞庫失敗", e);
+      console.error(e);
     }
   };
 
-  const currentItem = practiceList[currentIndex];
+  const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0];
 
-  const playAudio = (text: string) => {
-    if (!("speechSynthesis" in window)) {
-      alert("你的瀏覽器不支援語音合成");
-      return;
+  // 播放
+  const stopAudio = useCallback(() => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
     }
-    setIsPlaying(true);
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "zh-HK";
-    utterance.rate = 0.8;
-    utterance.onend = () => setIsPlaying(false);
-    utterance.onerror = () => setIsPlaying(false);
-    speechSynthesis.speak(utterance);
-  };
+    setIsPlaying(false);
+    utteranceRef.current = null;
+  }, []);
+
+  const playAudio = useCallback(
+    (text: string) => {
+      if (!("speechSynthesis" in window)) {
+        alert("你的瀏覽器不支援語音合成");
+        return;
+      }
+      stopAudio();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "zh-HK";
+      utterance.rate = speechRate;
+      utterance.onend = () => setIsPlaying(false);
+      utterance.onerror = () => setIsPlaying(false);
+      utteranceRef.current = utterance;
+      setIsPlaying(true);
+      speechSynthesis.speak(utterance);
+    },
+    [speechRate, stopAudio]
+  );
+
+  const togglePlayPause = useCallback(() => {
+    if (!practiceList[currentIndex]) return;
+    if (isPlaying) {
+      stopAudio();
+    } else {
+      playAudio(practiceList[currentIndex].text);
+    }
+  }, [isPlaying, currentIndex, practiceList, playAudio, stopAudio]);
+
+  // 空白鍵控制
+  useEffect(() => {
+    if (mode !== "practice") return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.code === "Space" && e.target === document.body) {
+        e.preventDefault();
+        togglePlayPause();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [mode, togglePlayPause]);
 
   const checkAnswer = () => {
-    if (!currentItem) return;
-    const correct = currentItem.text.trim();
-    if (input.trim() === correct) {
+    const item = practiceList[currentIndex];
+    if (!item) return;
+    if (input.trim() === item.text.trim()) {
       setResult("correct");
       setScore((s) => s + 1);
     } else {
@@ -114,19 +171,102 @@ export default function Home() {
     }
   };
 
-  const nextItem = () => {
+  const goTo = (index: number) => {
+    stopAudio();
     setInput("");
     setResult(null);
-    setCurrentIndex((i) => (i + 1) % practiceList.length);
+    setCurrentIndex(index);
   };
 
-  // 開始用目前詞庫練習
-  const startWordsPractice = () => {
-    if (wordBank.length === 0) {
-      alert("詞庫係空嘅，請先加入詞語");
+  const nextItem = () => {
+    goTo((currentIndex + 1) % practiceList.length);
+  };
+
+  const prevItem = () => {
+    goTo((currentIndex - 1 + practiceList.length) % practiceList.length);
+  };
+
+  // ===== 詞庫管理操作 =====
+  const createGroup = () => {
+    const name = newGroupName.trim();
+    if (!name) {
+      alert("請輸入詞庫名稱");
       return;
     }
-    setPracticeList([...wordBank]);
+    const newGroup: WordGroup = {
+      id: generateId(),
+      name,
+      words: [],
+    };
+    const updated = [...groups, newGroup];
+    saveGroups(updated);
+    setActiveGroupId(newGroup.id);
+    setNewGroupName("");
+  };
+
+  const deleteGroup = (id: string) => {
+    if (groups.length <= 1) {
+      alert("至少要保留一個詞庫");
+      return;
+    }
+    if (!confirm("確定刪除呢個詞庫？入面嘅詞語都會消失。")) return;
+    const updated = groups.filter((g) => g.id !== id);
+    saveGroups(updated);
+    if (activeGroupId === id) setActiveGroupId(updated[0].id);
+  };
+
+  const renameGroup = (id: string) => {
+    const name = editGroupName.trim();
+    if (!name) return;
+    const updated = groups.map((g) =>
+      g.id === id ? { ...g, name } : g
+    );
+    saveGroups(updated);
+    setEditingGroupId(null);
+  };
+
+  const addWordToActive = () => {
+    const text = newText.trim();
+    if (!text) {
+      alert("請輸入中文詞語");
+      return;
+    }
+    if (activeGroup.words.some((w) => w.text === text)) {
+      alert("呢個詞語已經存在");
+      return;
+    }
+    const updated = groups.map((g) =>
+      g.id === activeGroupId
+        ? {
+            ...g,
+            words: [...g.words, { text, jyutping: newJyutping.trim() || undefined }],
+          }
+        : g
+    );
+    saveGroups(updated);
+    setNewText("");
+    setNewJyutping("");
+  };
+
+  const deleteWord = (wordIndex: number) => {
+    if (!confirm(`確定刪除「${activeGroup.words[wordIndex].text}」？`)) return;
+    const updated = groups.map((g) =>
+      g.id === activeGroupId
+        ? { ...g, words: g.words.filter((_, i) => i !== wordIndex) }
+        : g
+    );
+    saveGroups(updated);
+  };
+
+  // 開始練習（從選擇嘅詞庫合併）
+  const startSelectedPractice = () => {
+    const selected = groups.filter((g) => selectedGroupIds.includes(g.id));
+    const allWords = selected.flatMap((g) => g.words);
+    if (allWords.length === 0) {
+      alert("所選詞庫冇任何詞語");
+      return;
+    }
+    setPracticeList(allWords);
     setCurrentIndex(0);
     setScore(0);
     setInput("");
@@ -134,35 +274,10 @@ export default function Home() {
     setMode("practice");
   };
 
-  // 新增詞語
-  const addWord = () => {
-    const text = newText.trim();
-    if (!text) {
-      alert("請輸入中文詞語");
-      return;
-    }
-    // 避免重複
-    if (wordBank.some((w) => w.text === text)) {
-      alert("呢個詞語已經存在");
-      return;
-    }
-    const newList = [...wordBank, { text, jyutping: newJyutping.trim() || undefined }];
-    saveWordBank(newList);
-    setNewText("");
-    setNewJyutping("");
-  };
-
-  // 刪除詞語
-  const deleteWord = (index: number) => {
-    if (!confirm(`確定刪除「${wordBank[index].text}」？`)) return;
-    const newList = wordBank.filter((_, i) => i !== index);
-    saveWordBank(newList);
-  };
-
-  // 還原預設
-  const resetToDefault = () => {
-    if (!confirm("確定還原成預設詞庫？你自己加嘅詞語會消失。")) return;
-    saveWordBank([...defaultWords]);
+  const toggleSelectGroup = (id: string) => {
+    setSelectedGroupIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   };
 
   // OCR
@@ -170,10 +285,8 @@ export default function Home() {
     setOcrStatus("loading");
     setOcrProgress(0);
     setOcrText("");
-
     try {
       const { createWorker } = await import("tesseract.js");
-
       const worker = await createWorker("chi_tra", 1, {
         logger: (m) => {
           if (m.status === "recognizing text") {
@@ -181,23 +294,14 @@ export default function Home() {
           }
         },
       });
-
-      const {
-        data: { text },
-      } = await worker.recognize(file);
-
+      const { data: { text } } = await worker.recognize(file);
       await worker.terminate();
-
-      const cleaned = text
-        .replace(/\n{3,}/g, "\n\n")
-        .replace(/[ \t]+/g, " ")
-        .trim();
-
+      const cleaned = text.replace(/\n{3,}/g, "\n\n").replace(/[ \t]+/g, " ").trim();
       setOcrText(cleaned || "未能識別到文字，請試下再影清晰啲。");
       setOcrStatus("done");
     } catch (err) {
       console.error(err);
-      setOcrText("識別失敗，請再試一次或換張更清晰的相片。");
+      setOcrText("識別失敗，請再試一次。");
       setOcrStatus("error");
     }
   };
@@ -209,17 +313,14 @@ export default function Home() {
 
   const startFromOcr = () => {
     if (!ocrText.trim()) return;
-
     const sentences = ocrText
       .split(/(?<=[。！？\n])\s*/)
       .map((s) => s.trim())
       .filter((s) => s.length > 1);
-
     if (sentences.length === 0) {
       alert("請先確認有文字內容");
       return;
     }
-
     setPracticeList(sentences.map((s) => ({ text: s })));
     setCurrentIndex(0);
     setScore(0);
@@ -239,13 +340,10 @@ export default function Home() {
           <p className="text-gray-500 mb-2">廣東話 · 繁體中文</p>
 
           <button
-            onClick={startWordsPractice}
+            onClick={() => setMode("select")}
             className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xl font-semibold py-4 rounded-2xl"
           >
-            開始詞語練習
-            <div className="text-sm font-normal opacity-90 mt-1">
-              目前詞庫有 {wordBank.length} 個詞
-            </div>
+            開始默書練習
           </button>
 
           <button
@@ -265,16 +363,61 @@ export default function Home() {
           >
             📸 影相匯入課文
           </button>
-
-          <p className="text-xs text-gray-400 mt-4">
-            詞庫會自動儲存在呢部手機 / 電腦
-          </p>
         </div>
       </div>
     );
   }
 
-  // 詞庫管理頁面
+  // 選擇詞庫頁面
+  if (mode === "select") {
+    return (
+      <div className="min-h-screen p-4 bg-amber-50">
+        <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-5">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-orange-600">選擇默書詞庫</h2>
+            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">
+              ← 返回
+            </button>
+          </div>
+
+          <p className="text-sm text-gray-600">可同時選擇多個詞庫一齊練習</p>
+
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {groups.map((g) => (
+              <label
+                key={g.id}
+                className={`flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition ${
+                  selectedGroupIds.includes(g.id)
+                    ? "border-orange-400 bg-orange-50"
+                    : "border-gray-200"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedGroupIds.includes(g.id)}
+                  onChange={() => toggleSelectGroup(g.id)}
+                  className="w-5 h-5"
+                />
+                <div className="flex-1 text-left">
+                  <div className="font-medium text-lg">{g.name}</div>
+                  <div className="text-sm text-gray-500">{g.words.length} 個詞語</div>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          <button
+            onClick={startSelectedPractice}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white text-lg font-semibold py-4 rounded-2xl"
+          >
+            開始練習 →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 詞庫管理
   if (mode === "manage") {
     return (
       <div className="min-h-screen p-4 bg-amber-50">
@@ -286,54 +429,123 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="text-sm text-gray-600">
-            目前共有 <span className="font-bold text-orange-600">{wordBank.length}</span> 個詞語
+          {/* 群組列表 */}
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {groups.map((g) => (
+              <button
+                key={g.id}
+                onClick={() => setActiveGroupId(g.id)}
+                className={`px-4 py-2 rounded-full text-sm whitespace-nowrap ${
+                  activeGroupId === g.id
+                    ? "bg-orange-500 text-white"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {g.name} ({g.words.length})
+              </button>
+            ))}
           </div>
 
-          {/* 新增區域 */}
-          <div className="border-2 border-dashed border-orange-200 rounded-2xl p-4 space-y-3">
-            <div className="font-medium text-gray-700">新增詞語</div>
+          {/* 新增群組 */}
+          <div className="flex gap-2">
             <input
-              type="text"
-              value={newText}
-              onChange={(e) => setNewText(e.target.value)}
-              placeholder="中文詞語（必填）"
-              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-lg outline-none focus:border-orange-400"
-            />
-            <input
-              type="text"
-              value={newJyutping}
-              onChange={(e) => setNewJyutping(e.target.value)}
-              placeholder="粵拼（可選，例如 baa4 baa1）"
-              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              placeholder="新詞庫名稱"
+              className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
             />
             <button
-              onClick={addWord}
-              className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl"
+              onClick={createGroup}
+              className="bg-green-500 text-white px-4 rounded-xl font-medium"
             >
-              ＋ 加入詞庫
+              新增
             </button>
           </div>
 
+          {/* 目前群組操作 */}
+          <div className="bg-orange-50 rounded-2xl p-4 space-y-3">
+            <div className="flex justify-between items-center">
+              {editingGroupId === activeGroup.id ? (
+                <div className="flex gap-2 flex-1">
+                  <input
+                    value={editGroupName}
+                    onChange={(e) => setEditGroupName(e.target.value)}
+                    className="flex-1 border rounded-lg px-2 py-1"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => renameGroup(activeGroup.id)}
+                    className="text-green-600 text-sm"
+                  >
+                    儲存
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="font-bold text-lg">{activeGroup.name}</div>
+                  <div className="flex gap-3 text-sm">
+                    <button
+                      onClick={() => {
+                        setEditingGroupId(activeGroup.id);
+                        setEditGroupName(activeGroup.name);
+                      }}
+                      className="text-blue-600"
+                    >
+                      重新命名
+                    </button>
+                    <button
+                      onClick={() => deleteGroup(activeGroup.id)}
+                      className="text-red-500"
+                    >
+                      刪除詞庫
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 新增詞語 */}
+            <div className="space-y-2">
+              <input
+                value={newText}
+                onChange={(e) => setNewText(e.target.value)}
+                placeholder="中文詞語"
+                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
+              />
+              <input
+                value={newJyutping}
+                onChange={(e) => setNewJyutping(e.target.value)}
+                placeholder="粵拼（可選）"
+                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
+              />
+              <button
+                onClick={addWordToActive}
+                className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-xl"
+              >
+                ＋ 加入呢個詞庫
+              </button>
+            </div>
+          </div>
+
           {/* 詞語列表 */}
-          <div className="max-h-80 overflow-y-auto space-y-2">
-            {wordBank.length === 0 ? (
-              <div className="text-center text-gray-400 py-8">詞庫係空嘅</div>
+          <div className="max-h-64 overflow-y-auto space-y-2">
+            {activeGroup.words.length === 0 ? (
+              <div className="text-center text-gray-400 py-6">呢個詞庫仲係空嘅</div>
             ) : (
-              wordBank.map((w, i) => (
+              activeGroup.words.map((w, i) => (
                 <div
                   key={i}
-                  className="flex items-center justify-between bg-orange-50 rounded-xl px-4 py-3"
+                  className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3"
                 >
                   <div>
-                    <div className="text-lg font-medium">{w.text}</div>
+                    <div className="font-medium">{w.text}</div>
                     {w.jyutping && (
                       <div className="text-sm text-gray-500">{w.jyutping}</div>
                     )}
                   </div>
                   <button
                     onClick={() => deleteWord(i)}
-                    className="text-red-500 text-sm px-3 py-1 rounded-lg hover:bg-red-50"
+                    className="text-red-500 text-sm"
                   >
                     刪除
                   </button>
@@ -341,19 +553,12 @@ export default function Home() {
               ))
             )}
           </div>
-
-          <button
-            onClick={resetToDefault}
-            className="w-full border-2 border-gray-300 text-gray-600 py-3 rounded-xl text-sm"
-          >
-            還原預設詞庫
-          </button>
         </div>
       </div>
     );
   }
 
-  // OCR 頁面
+  // OCR
   if (mode === "ocr") {
     return (
       <div className="min-h-screen p-4 bg-amber-50">
@@ -379,9 +584,7 @@ export default function Home() {
             disabled={ocrStatus === "loading"}
             className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white text-lg font-semibold py-4 rounded-2xl"
           >
-            {ocrStatus === "loading"
-              ? `識別中... ${ocrProgress}%`
-              : "📷 影相 / 選擇相片"}
+            {ocrStatus === "loading" ? `識別中... ${ocrProgress}%` : "📷 影相 / 選擇相片"}
           </button>
 
           {ocrStatus === "loading" && (
@@ -395,17 +598,13 @@ export default function Home() {
 
           {(ocrStatus === "done" || ocrStatus === "error") && (
             <>
-              <label className="block text-sm font-medium text-gray-700">
-                識別結果（可修改）：
-              </label>
               <textarea
                 value={ocrText}
                 onChange={(e) => setOcrText(e.target.value)}
                 rows={10}
                 className="w-full border-2 border-orange-200 rounded-xl p-3 text-lg focus:border-orange-400 outline-none"
-                placeholder="識別出的文字會顯示在這裡，你可以修改..."
+                placeholder="識別結果（可修改）"
               />
-
               <button
                 onClick={startFromOcr}
                 className="w-full bg-green-500 hover:bg-green-600 text-white text-lg font-semibold py-4 rounded-2xl"
@@ -414,65 +613,79 @@ export default function Home() {
               </button>
             </>
           )}
-
-          <p className="text-xs text-gray-400">
-            提示：影相時盡量影清晰、光線充足、字體正，識別會準確啲。
-          </p>
         </div>
       </div>
     );
   }
 
   // 練習頁面
+  const item = practiceList[currentIndex];
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-amber-50">
-      <div className="bg-white rounded-3xl shadow-xl p-6 max-w-md w-full text-center">
-        <div className="flex justify-between items-center mb-4">
-          <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">
-            ← 返回選單
+      <div className="bg-white rounded-3xl shadow-xl p-6 max-w-md w-full text-center space-y-4">
+        <div className="flex justify-between items-center">
+          <button onClick={() => { stopAudio(); setMode("menu"); }} className="text-gray-500 text-sm">
+            ← 返回
           </button>
           <div className="text-sm text-gray-600">
-            {currentIndex + 1} / {practiceList.length}　分數：{score}
+            {currentIndex + 1} / {practiceList.length}　分數 {score}
           </div>
         </div>
 
-        <button
-          onClick={() => currentItem && playAudio(currentItem.text)}
-          disabled={isPlaying || !currentItem}
-          className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white text-xl font-semibold py-4 rounded-2xl mb-5"
-        >
-          {isPlaying ? "播放中..." : "▶️ 播放廣東話"}
-        </button>
-
-        <div className="mb-3 text-left text-sm text-gray-500 px-1">
-          {currentItem && currentItem.text.length > 15 ? "請默寫整句：" : "請默寫："}
+        {/* 語速 */}
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-gray-500 whitespace-nowrap">語速</span>
+          <input
+            type="range"
+            min="0.6"
+            max="1.2"
+            step="0.05"
+            value={speechRate}
+            onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+            className="flex-1"
+          />
+          <span className="w-10 text-right">{speechRate.toFixed(2)}</span>
         </div>
+
+        <button
+          onClick={togglePlayPause}
+          className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xl font-semibold py-4 rounded-2xl"
+        >
+          {isPlaying ? "⏸ 暫停（空白鍵）" : "▶️ 播放（空白鍵）"}
+        </button>
 
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          rows={currentItem && currentItem.text.length > 20 ? 4 : 2}
-          className="w-full text-2xl border-4 border-orange-200 focus:border-orange-400 rounded-2xl px-4 py-3 text-center outline-none mb-4"
+          rows={item && item.text.length > 20 ? 4 : 2}
+          className="w-full text-2xl border-4 border-orange-200 focus:border-orange-400 rounded-2xl px-4 py-3 text-center outline-none"
           placeholder="喺度輸入答案"
           autoFocus
         />
 
-        <div className="flex gap-3 mb-5">
+        <div className="flex gap-2">
+          <button
+            onClick={prevItem}
+            className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-2xl"
+          >
+            ← 上一句
+          </button>
           <button
             onClick={checkAnswer}
-            className="flex-1 bg-green-500 hover:bg-green-600 text-white text-lg font-semibold py-3 rounded-2xl"
+            className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-2xl"
           >
             檢查 ✅
           </button>
           <button
             onClick={nextItem}
-            className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-lg font-semibold py-3 rounded-2xl"
+            className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-2xl"
           >
-            下一個 →
+            下一句 →
           </button>
         </div>
 
-        {result && currentItem && (
+        {result && item && (
           <div
             className={`text-xl font-bold p-4 rounded-2xl ${
               result === "correct"
@@ -485,16 +698,16 @@ export default function Home() {
             ) : (
               <>
                 <div>正確答案：</div>
-                <div className="mt-1 text-lg break-words">{currentItem.text}</div>
-                {currentItem.jyutping && (
-                  <div className="text-sm mt-1 text-gray-600">
-                    粵拼：{currentItem.jyutping}
-                  </div>
+                <div className="mt-1 text-lg break-words">{item.text}</div>
+                {item.jyutping && (
+                  <div className="text-sm mt-1 text-gray-600">粵拼：{item.jyutping}</div>
                 )}
               </>
             )}
           </div>
         )}
+
+        <p className="text-xs text-gray-400">提示：按空白鍵可快速暫停 / 播放</p>
       </div>
     </div>
   );
