@@ -54,6 +54,7 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("menu");
   const [groups, setGroups] = useState<WordGroup[]>(defaultGroups);
   const [activeGroupId, setActiveGroupId] = useState<string>("default");
+  const [loaded, setLoaded] = useState(false);
 
   // 練習相關
   const [practiceList, setPracticeList] = useState<WordItem[]>([]);
@@ -70,6 +71,7 @@ export default function Home() {
   const [newJyutping, setNewJyutping] = useState("");
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editGroupName, setEditGroupName] = useState("");
+  const [message, setMessage] = useState("");
 
   // 選擇練習詞庫
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(["default"]);
@@ -82,7 +84,11 @@ export default function Home() {
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // 載入
+  // 安全取得目前群組
+  const activeGroup =
+    groups.find((g) => g.id === activeGroupId) || groups[0] || defaultGroups[0];
+
+  // 載入 localStorage（只跑一次）
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -95,22 +101,30 @@ export default function Home() {
         }
       }
     } catch (e) {
-      console.error(e);
+      console.error("載入詞庫失敗", e);
+    } finally {
+      setLoaded(true);
     }
   }, []);
 
-  const saveGroups = (newGroups: WordGroup[]) => {
+  // 統一儲存函式
+  const saveGroups = useCallback((newGroups: WordGroup[]) => {
     setGroups(newGroups);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newGroups));
     } catch (e) {
-      console.error(e);
+      console.error("儲存失敗", e);
+      alert("儲存失敗，可能係瀏覽器儲存空間不足");
     }
+  }, []);
+
+  // 顯示短暫提示
+  const showMessage = (msg: string) => {
+    setMessage(msg);
+    setTimeout(() => setMessage(""), 2000);
   };
 
-  const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0];
-
-  // 播放
+  // 播放控制
   const stopAudio = useCallback(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -147,11 +161,11 @@ export default function Home() {
     }
   }, [isPlaying, currentIndex, practiceList, playAudio, stopAudio]);
 
-  // 空白鍵控制
+  // 空白鍵
   useEffect(() => {
     if (mode !== "practice") return;
     const handler = (e: KeyboardEvent) => {
-      if (e.code === "Space" && e.target === document.body) {
+      if (e.code === "Space" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
         e.preventDefault();
         togglePlayPause();
       }
@@ -178,15 +192,10 @@ export default function Home() {
     setCurrentIndex(index);
   };
 
-  const nextItem = () => {
-    goTo((currentIndex + 1) % practiceList.length);
-  };
+  const nextItem = () => goTo((currentIndex + 1) % practiceList.length);
+  const prevItem = () => goTo((currentIndex - 1 + practiceList.length) % practiceList.length);
 
-  const prevItem = () => {
-    goTo((currentIndex - 1 + practiceList.length) % practiceList.length);
-  };
-
-  // ===== 詞庫管理操作 =====
+  // ===== 詞庫管理 =====
   const createGroup = () => {
     const name = newGroupName.trim();
     if (!name) {
@@ -202,6 +211,7 @@ export default function Home() {
     saveGroups(updated);
     setActiveGroupId(newGroup.id);
     setNewGroupName("");
+    showMessage(`已新增詞庫「${name}」`);
   };
 
   const deleteGroup = (id: string) => {
@@ -209,20 +219,30 @@ export default function Home() {
       alert("至少要保留一個詞庫");
       return;
     }
-    if (!confirm("確定刪除呢個詞庫？入面嘅詞語都會消失。")) return;
+    const target = groups.find((g) => g.id === id);
+    if (!confirm(`確定刪除詞庫「${target?.name}」？入面嘅詞語都會消失。`)) return;
+
     const updated = groups.filter((g) => g.id !== id);
     saveGroups(updated);
-    if (activeGroupId === id) setActiveGroupId(updated[0].id);
+
+    if (activeGroupId === id) {
+      setActiveGroupId(updated[0].id);
+    }
+    // 同步更新選擇列表
+    setSelectedGroupIds((prev) => {
+      const next = prev.filter((x) => x !== id);
+      return next.length > 0 ? next : [updated[0].id];
+    });
+    showMessage("已刪除詞庫");
   };
 
   const renameGroup = (id: string) => {
     const name = editGroupName.trim();
     if (!name) return;
-    const updated = groups.map((g) =>
-      g.id === id ? { ...g, name } : g
-    );
+    const updated = groups.map((g) => (g.id === id ? { ...g, name } : g));
     saveGroups(updated);
     setEditingGroupId(null);
+    showMessage("已重新命名");
   };
 
   const addWordToActive = () => {
@@ -231,10 +251,16 @@ export default function Home() {
       alert("請輸入中文詞語");
       return;
     }
-    if (activeGroup.words.some((w) => w.text === text)) {
-      alert("呢個詞語已經存在");
+
+    // 用最新 groups 來判斷，避免 stale state
+    const current = groups.find((g) => g.id === activeGroupId) || groups[0];
+    if (!current) return;
+
+    if (current.words.some((w) => w.text === text)) {
+      alert("呢個詞語已經存在於此詞庫");
       return;
     }
+
     const updated = groups.map((g) =>
       g.id === activeGroupId
         ? {
@@ -246,24 +272,30 @@ export default function Home() {
     saveGroups(updated);
     setNewText("");
     setNewJyutping("");
+    showMessage(`已加入「${text}」`);
   };
 
   const deleteWord = (wordIndex: number) => {
-    if (!confirm(`確定刪除「${activeGroup.words[wordIndex].text}」？`)) return;
+    const current = groups.find((g) => g.id === activeGroupId) || groups[0];
+    if (!current || !current.words[wordIndex]) return;
+
+    if (!confirm(`確定刪除「${current.words[wordIndex].text}」？`)) return;
+
     const updated = groups.map((g) =>
       g.id === activeGroupId
         ? { ...g, words: g.words.filter((_, i) => i !== wordIndex) }
         : g
     );
     saveGroups(updated);
+    showMessage("已刪除詞語");
   };
 
-  // 開始練習（從選擇嘅詞庫合併）
+  // 開始練習
   const startSelectedPractice = () => {
     const selected = groups.filter((g) => selectedGroupIds.includes(g.id));
     const allWords = selected.flatMap((g) => g.words);
     if (allWords.length === 0) {
-      alert("所選詞庫冇任何詞語");
+      alert("所選詞庫冇任何詞語，請先去詞庫管理加入詞語");
       return;
     }
     setPracticeList(allWords);
@@ -329,6 +361,14 @@ export default function Home() {
     setMode("practice");
   };
 
+  if (!loaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-amber-50">
+        <div className="text-gray-500">載入中...</div>
+      </div>
+    );
+  }
+
   // ========== UI ==========
 
   // 主選單
@@ -368,7 +408,7 @@ export default function Home() {
     );
   }
 
-  // 選擇詞庫頁面
+  // 選擇詞庫
   if (mode === "select") {
     return (
       <div className="min-h-screen p-4 bg-amber-50">
@@ -417,7 +457,7 @@ export default function Home() {
     );
   }
 
-  // 詞庫管理
+  // 詞庫管理（加強版）
   if (mode === "manage") {
     return (
       <div className="min-h-screen p-4 bg-amber-50">
@@ -429,13 +469,22 @@ export default function Home() {
             </button>
           </div>
 
-          {/* 群組列表 */}
+          {message && (
+            <div className="bg-green-100 text-green-700 text-center py-2 rounded-xl text-sm">
+              {message}
+            </div>
+          )}
+
+          {/* 群組 Tabs */}
           <div className="flex gap-2 overflow-x-auto pb-2">
             {groups.map((g) => (
               <button
                 key={g.id}
-                onClick={() => setActiveGroupId(g.id)}
-                className={`px-4 py-2 rounded-full text-sm whitespace-nowrap ${
+                onClick={() => {
+                  setActiveGroupId(g.id);
+                  setEditingGroupId(null);
+                }}
+                className={`px-4 py-2 rounded-full text-sm whitespace-nowrap transition ${
                   activeGroupId === g.id
                     ? "bg-orange-500 text-white"
                     : "bg-gray-100 text-gray-700"
@@ -451,38 +500,49 @@ export default function Home() {
             <input
               value={newGroupName}
               onChange={(e) => setNewGroupName(e.target.value)}
-              placeholder="新詞庫名稱"
+              onKeyDown={(e) => e.key === "Enter" && createGroup()}
+              placeholder="輸入新詞庫名稱"
               className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
             />
             <button
               onClick={createGroup}
-              className="bg-green-500 text-white px-4 rounded-xl font-medium"
+              className="bg-green-500 hover:bg-green-600 text-white px-4 rounded-xl font-medium"
             >
-              新增
+              新增詞庫
             </button>
           </div>
 
-          {/* 目前群組操作 */}
+          {/* 目前管理緊邊個 */}
           <div className="bg-orange-50 rounded-2xl p-4 space-y-3">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center gap-2">
               {editingGroupId === activeGroup.id ? (
-                <div className="flex gap-2 flex-1">
+                <div className="flex gap-2 flex-1 items-center">
                   <input
                     value={editGroupName}
                     onChange={(e) => setEditGroupName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && renameGroup(activeGroup.id)}
                     className="flex-1 border rounded-lg px-2 py-1"
                     autoFocus
                   />
                   <button
                     onClick={() => renameGroup(activeGroup.id)}
-                    className="text-green-600 text-sm"
+                    className="text-green-600 text-sm font-medium"
                   >
                     儲存
+                  </button>
+                  <button
+                    onClick={() => setEditingGroupId(null)}
+                    className="text-gray-500 text-sm"
+                  >
+                    取消
                   </button>
                 </div>
               ) : (
                 <>
-                  <div className="font-bold text-lg">{activeGroup.name}</div>
+                  <div>
+                    <div className="text-xs text-gray-500">目前管理</div>
+                    <div className="font-bold text-lg">{activeGroup.name}</div>
+                  </div>
                   <div className="flex gap-3 text-sm">
                     <button
                       onClick={() => {
@@ -497,7 +557,7 @@ export default function Home() {
                       onClick={() => deleteGroup(activeGroup.id)}
                       className="text-red-500"
                     >
-                      刪除詞庫
+                      刪除
                     </button>
                   </div>
                 </>
@@ -505,36 +565,41 @@ export default function Home() {
             </div>
 
             {/* 新增詞語 */}
-            <div className="space-y-2">
+            <div className="space-y-2 pt-2 border-t border-orange-100">
               <input
                 value={newText}
                 onChange={(e) => setNewText(e.target.value)}
-                placeholder="中文詞語"
+                onKeyDown={(e) => e.key === "Enter" && addWordToActive()}
+                placeholder="中文詞語（必填）"
                 className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
               />
               <input
                 value={newJyutping}
                 onChange={(e) => setNewJyutping(e.target.value)}
-                placeholder="粵拼（可選）"
+                onKeyDown={(e) => e.key === "Enter" && addWordToActive()}
+                placeholder="粵拼（可選，例如 baa4 baa1）"
                 className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
               />
               <button
                 onClick={addWordToActive}
-                className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-xl"
+                className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 rounded-xl"
               >
-                ＋ 加入呢個詞庫
+                ＋ 加入「{activeGroup.name}」
               </button>
             </div>
           </div>
 
           {/* 詞語列表 */}
-          <div className="max-h-64 overflow-y-auto space-y-2">
+          <div className="max-h-72 overflow-y-auto space-y-2">
             {activeGroup.words.length === 0 ? (
-              <div className="text-center text-gray-400 py-6">呢個詞庫仲係空嘅</div>
+              <div className="text-center text-gray-400 py-8">
+                呢個詞庫仲係空嘅<br />
+                <span className="text-sm">用上面表格加入詞語</span>
+              </div>
             ) : (
               activeGroup.words.map((w, i) => (
                 <div
-                  key={i}
+                  key={`${activeGroup.id}-${i}-${w.text}`}
                   className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3"
                 >
                   <div>
@@ -545,7 +610,7 @@ export default function Home() {
                   </div>
                   <button
                     onClick={() => deleteWord(i)}
-                    className="text-red-500 text-sm"
+                    className="text-red-500 text-sm px-2 py-1"
                   >
                     刪除
                   </button>
@@ -625,7 +690,13 @@ export default function Home() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-amber-50">
       <div className="bg-white rounded-3xl shadow-xl p-6 max-w-md w-full text-center space-y-4">
         <div className="flex justify-between items-center">
-          <button onClick={() => { stopAudio(); setMode("menu"); }} className="text-gray-500 text-sm">
+          <button
+            onClick={() => {
+              stopAudio();
+              setMode("menu");
+            }}
+            className="text-gray-500 text-sm"
+          >
             ← 返回
           </button>
           <div className="text-sm text-gray-600">
@@ -633,7 +704,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 語速 */}
         <div className="flex items-center gap-3 text-sm">
           <span className="text-gray-500 whitespace-nowrap">語速</span>
           <input
