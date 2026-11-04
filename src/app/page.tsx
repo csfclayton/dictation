@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { quizBank } from "@/data/quizBank";
+import type { QuizQuestion } from "@/data/quizTypes";
 
 type WordItem = { text: string; jyutping?: string };
 type WordGroup = { id: string; name: string; words: WordItem[] };
@@ -40,41 +42,6 @@ const defaultGroups: WordGroup[] = [
 const STORAGE_KEY = "dictation_groups_v2";
 
 type Mode = "menu" | "manage" | "select" | "ocr" | "practice" | "quiz" | "quizPlay";
-
-type QuizQuestion = {
-  id: string;
-  topic: string;
-  question: string;
-  options: string[];
-  answer: number;
-};
-
-const quizBank: QuizQuestion[] = [
-  { id: "h1", topic: "健康", question: "下列哪一項最有助預防傳染病？", options: ["定時洗手", "少喝水", "長時間唔瞓覺", "食過多糖分"], answer: 0 },
-  { id: "h2", topic: "健康", question: "均衡飲食通常包括？", options: ["只食肉類", "五穀、蔬果、蛋白質等多樣食物", "只飲汽水", "只食零食"], answer: 1 },
-  { id: "h3", topic: "健康", question: "做運動主要有甚麼好處？", options: ["令身體更健康", "一定會變矮", "令視力變差", "唔使食嘢"], answer: 0 },
-  { id: "s1", topic: "科學", question: "電可以轉變成下列哪種能量？", options: ["光、熱、動能", "只有聲音", "只有氣味", "只有顏色"], answer: 0 },
-  { id: "s2", topic: "科學", question: "電路要點先會有電通過？", options: ["形成閉合電路", "電線斷開", "冇電池", "開關一直開住但斷路"], answer: 0 },
-  { id: "s3", topic: "科學", question: "光通常係沿甚麼路徑傳播？", options: ["直線", "只可以轉彎", "只可以向上", "隨機亂行"], answer: 0 },
-  { id: "s4", topic: "科學", question: "水由液態變成氣態嘅過程叫？", options: ["蒸發", "凝固", "融化", "昇華"], answer: 0 },
-  { id: "e1", topic: "環境", question: "節約能源可以點做？", options: ["唔使用時關燈同電器", "全日開冷氣唔關", "長開水龍頭", "浪費紙張"], answer: 0 },
-  { id: "e2", topic: "環境", question: "下列哪一項屬於可再生資源？", options: ["太陽能", "石油", "煤炭", "天然氣"], answer: 0 },
-  { id: "e3", topic: "環境", question: "減少浪費可以點做？", options: ["減少、重用、回收", "全部丟棄", "只買即棄物品", "唔分類回收"], answer: 0 },
-  { id: "hk1", topic: "香港", question: "香港特別行政區成立於哪一年？", options: ["1997年", "1984年", "2000年", "1967年"], answer: 0 },
-  { id: "hk2", topic: "香港", question: "《基本法》係？", options: ["香港特別行政區的憲制性文件", "一本小說", "學校校規", "交通規則"], answer: 0 },
-  { id: "hk3", topic: "香港", question: "香港主要使用邊種官方語言？", options: ["中文同英文", "只有普通話", "只有英文", "只有日文"], answer: 0 },
-  { id: "it1", topic: "資訊", question: "上網時保護個人資料好重要，因為？", options: ["避免資料被濫用", "令網速更快", "令電腦自動關機", "唔使交功課"], answer: 0 },
-  { id: "it2", topic: "資訊", question: "以下邊項係較安全的網上行為？", options: ["唔隨意公開個人地址電話", "同陌生人分享密碼", "亂下載未知檔案", "相信所有網上消息"], answer: 0 },
-  { id: "n1", topic: "國民", question: "中國的首都係？", options: ["北京", "上海", "廣州", "深圳"], answer: 0 },
-  { id: "n2", topic: "國民", question: "國旗上的五顆星代表？", options: ["全國人民大團結", "五個城市", "五種動物", "五座山"], answer: 0 },
-  { id: "n3", topic: "地理", question: "地球表面大部分被甚麼覆蓋？", options: ["海洋", "沙漠", "冰層", "森林"], answer: 0 },
-  { id: "s5", topic: "科學", question: "晝夜交替主要因為？", options: ["地球自轉", "地球唔郁", "月球發光", "太陽圍繞地球轉"], answer: 0 },
-  { id: "s6", topic: "科學", question: "植物進行光合作用需要？", options: ["陽光、水、二氧化碳", "只有黑暗", "只有泥土", "只有聲音"], answer: 0 },
-  { id: "h4", topic: "健康", question: "充足睡眠對小學生重要，因為有助？", options: ["身體同大腦發育", "一定長高十厘米", "唔使做運動", "可以唔食早餐"], answer: 0 },
-  { id: "e4", topic: "環境", question: "香港常見的天氣現象唔包括？", options: ["火山爆發", "颱風", "暴雨", "高溫"], answer: 0 },
-  { id: "it3", topic: "資訊", question: "收到可疑訊息或鏈結時應該？", options: ["唔好隨便點擊，可問家長或老師", "即刻點擊", "分享密碼", "轉發畀所有人"], answer: 0 },
-  { id: "hk4", topic: "香港", question: "香港位於中國的哪個方向？", options: ["南部", "最北端", "最西端", "青藏高原"], answer: 0 },
-];
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -118,6 +85,7 @@ export default function Home() {
   const [quizSelected, setQuizSelected] = useState<number | null>(null);
   const [quizShowAnswer, setQuizShowAnswer] = useState(false);
   const [quizFinished, setQuizFinished] = useState(false);
+  const [selectedQuizTopics, setSelectedQuizTopics] = useState<string[]>(["健康", "科學", "氣候", "地理", "香港"]);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0] || defaultGroups[0];
 
@@ -295,7 +263,9 @@ export default function Home() {
   };
 
   const startQuiz = (count: number) => {
-    const picked = shuffle(quizBank).slice(0, Math.min(count, quizBank.length));
+    const filtered = quizBank.filter((q) => selectedQuizTopics.includes(q.topic));
+    const pool = filtered.length > 0 ? filtered : quizBank;
+    const picked = shuffle(pool).slice(0, Math.min(count, pool.length));
     setQuizList(picked);
     setQuizIndex(0);
     setQuizScore(0);
@@ -396,11 +366,34 @@ export default function Home() {
             <h2 className="text-2xl font-bold text-teal-600">常識問答測驗</h2>
             <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">← 返回</button>
           </div>
-          <p className="text-gray-600 text-sm">適合香港小學四至五年級，涵蓋健康、科學、環境、香港、資訊等課題。</p>
-          <p className="text-sm text-gray-500">題庫共有 {quizBank.length} 題，每次隨機抽取。</p>
+          <p className="text-gray-600 text-sm">適合香港小學四至五年級，涵蓋健康、科學、氣候、地理、香港等課題。</p>
+          <p className="text-sm text-gray-500">題庫共有 {quizBank.length} 題（健康、科學、氣候、地理、香港各約50題）。</p>
+          <div className="text-left space-y-2">
+            <div className="text-sm font-medium text-gray-700">選擇主題：</div>
+            <div className="flex flex-wrap gap-2">
+              {["健康", "科學", "氣候", "地理", "香港"].map((t) => (
+                <button
+                  key={t}
+                  onClick={() =>
+                    setSelectedQuizTopics((prev) =>
+                      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
+                    )
+                  }
+                  className={`px-3 py-1.5 rounded-full text-sm border-2 ${
+                    selectedQuizTopics.includes(t)
+                      ? "border-teal-500 bg-teal-50 text-teal-800"
+                      : "border-gray-200 text-gray-500"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
           <button onClick={() => startQuiz(5)} className="w-full bg-teal-500 hover:bg-teal-600 text-white text-lg font-semibold py-4 rounded-2xl">開始 5 題測驗</button>
           <button onClick={() => startQuiz(10)} className="w-full bg-teal-600 hover:bg-teal-700 text-white text-lg font-semibold py-4 rounded-2xl">開始 10 題測驗</button>
-          <button onClick={() => startQuiz(quizBank.length)} className="w-full border-2 border-teal-500 text-teal-700 text-lg font-semibold py-4 rounded-2xl">全部題目練習</button>
+          <button onClick={() => startQuiz(20)} className="w-full bg-teal-700 hover:bg-teal-800 text-white text-lg font-semibold py-4 rounded-2xl">開始 20 題測驗</button>
+          <button onClick={() => startQuiz(9999)} className="w-full border-2 border-teal-500 text-teal-700 text-lg font-semibold py-4 rounded-2xl">所選主題全部練習</button>
         </div>
       </div>
     );
