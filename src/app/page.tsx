@@ -50,13 +50,69 @@ function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+/** 圖像預處理：灰階 + 提高對比度 + 適度放大，提升 OCR 準確度 */
+async function preprocessImage(file: File): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+
+      // 如果圖片太細，放大到合理尺寸（有助中文識別）
+      const minWidth = 1200;
+      let scale = 1;
+      if (img.width < minWidth) {
+        scale = minWidth / img.width;
+      }
+      // 限制最大不要太大，避免手機記憶體問題
+      scale = Math.min(scale, 2.5);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas not supported"));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // 灰階 + 提高對比度
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      const contrast = 35; // 對比度強度
+      const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+
+      for (let i = 0; i < data.length; i += 4) {
+        // 灰階
+        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        // 對比度
+        let val = factor * (gray - 128) + 128;
+        val = Math.max(0, Math.min(255, val));
+        data[i] = data[i + 1] = data[i + 2] = val;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("圖片載入失敗"));
+    };
+
+    img.src = url;
+  });
+}
+
 export default function Home() {
   const [mode, setMode] = useState<Mode>("menu");
   const [groups, setGroups] = useState<WordGroup[]>(defaultGroups);
   const [activeGroupId, setActiveGroupId] = useState<string>("default");
   const [loaded, setLoaded] = useState(false);
 
-  // 練習相關
   const [practiceList, setPracticeList] = useState<WordItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [input, setInput] = useState("");
@@ -65,7 +121,6 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speechRate, setSpeechRate] = useState(0.85);
 
-  // 管理用
   const [newGroupName, setNewGroupName] = useState("");
   const [newText, setNewText] = useState("");
   const [newJyutping, setNewJyutping] = useState("");
@@ -73,10 +128,8 @@ export default function Home() {
   const [editGroupName, setEditGroupName] = useState("");
   const [message, setMessage] = useState("");
 
-  // 選擇練習詞庫
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(["default"]);
 
-  // OCR
   const [ocrText, setOcrText] = useState("");
   const [ocrStatus, setOcrStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [ocrProgress, setOcrProgress] = useState(0);
@@ -84,11 +137,9 @@ export default function Home() {
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // 安全取得目前群組
   const activeGroup =
     groups.find((g) => g.id === activeGroupId) || groups[0] || defaultGroups[0];
 
-  // 載入 localStorage（只跑一次）
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -107,7 +158,6 @@ export default function Home() {
     }
   }, []);
 
-  // 統一儲存函式
   const saveGroups = useCallback((newGroups: WordGroup[]) => {
     setGroups(newGroups);
     try {
@@ -118,13 +168,11 @@ export default function Home() {
     }
   }, []);
 
-  // 顯示短暫提示
   const showMessage = (msg: string) => {
     setMessage(msg);
     setTimeout(() => setMessage(""), 2000);
   };
 
-  // 播放控制
   const stopAudio = useCallback(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -161,11 +209,13 @@ export default function Home() {
     }
   }, [isPlaying, currentIndex, practiceList, playAudio, stopAudio]);
 
-  // 空白鍵
   useEffect(() => {
     if (mode !== "practice") return;
     const handler = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+      if (
+        e.code === "Space" &&
+        !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+      ) {
         e.preventDefault();
         togglePlayPause();
       }
@@ -195,18 +245,13 @@ export default function Home() {
   const nextItem = () => goTo((currentIndex + 1) % practiceList.length);
   const prevItem = () => goTo((currentIndex - 1 + practiceList.length) % practiceList.length);
 
-  // ===== 詞庫管理 =====
   const createGroup = () => {
     const name = newGroupName.trim();
     if (!name) {
       alert("請輸入詞庫名稱");
       return;
     }
-    const newGroup: WordGroup = {
-      id: generateId(),
-      name,
-      words: [],
-    };
+    const newGroup: WordGroup = { id: generateId(), name, words: [] };
     const updated = [...groups, newGroup];
     saveGroups(updated);
     setActiveGroupId(newGroup.id);
@@ -225,10 +270,7 @@ export default function Home() {
     const updated = groups.filter((g) => g.id !== id);
     saveGroups(updated);
 
-    if (activeGroupId === id) {
-      setActiveGroupId(updated[0].id);
-    }
-    // 同步更新選擇列表
+    if (activeGroupId === id) setActiveGroupId(updated[0].id);
     setSelectedGroupIds((prev) => {
       const next = prev.filter((x) => x !== id);
       return next.length > 0 ? next : [updated[0].id];
@@ -251,22 +293,15 @@ export default function Home() {
       alert("請輸入中文詞語");
       return;
     }
-
-    // 用最新 groups 來判斷，避免 stale state
     const current = groups.find((g) => g.id === activeGroupId) || groups[0];
     if (!current) return;
-
     if (current.words.some((w) => w.text === text)) {
       alert("呢個詞語已經存在於此詞庫");
       return;
     }
-
     const updated = groups.map((g) =>
       g.id === activeGroupId
-        ? {
-            ...g,
-            words: [...g.words, { text, jyutping: newJyutping.trim() || undefined }],
-          }
+        ? { ...g, words: [...g.words, { text, jyutping: newJyutping.trim() || undefined }] }
         : g
     );
     saveGroups(updated);
@@ -278,9 +313,7 @@ export default function Home() {
   const deleteWord = (wordIndex: number) => {
     const current = groups.find((g) => g.id === activeGroupId) || groups[0];
     if (!current || !current.words[wordIndex]) return;
-
     if (!confirm(`確定刪除「${current.words[wordIndex].text}」？`)) return;
-
     const updated = groups.map((g) =>
       g.id === activeGroupId
         ? { ...g, words: g.words.filter((_, i) => i !== wordIndex) }
@@ -290,7 +323,6 @@ export default function Home() {
     showMessage("已刪除詞語");
   };
 
-  // 開始練習
   const startSelectedPractice = () => {
     const selected = groups.filter((g) => selectedGroupIds.includes(g.id));
     const allWords = selected.flatMap((g) => g.words);
@@ -312,28 +344,50 @@ export default function Home() {
     );
   };
 
-  // OCR
+  // ===== 優化後的 OCR =====
   const handleImage = async (file: File) => {
     setOcrStatus("loading");
     setOcrProgress(0);
     setOcrText("");
+
     try {
+      // 1. 預處理圖像
+      setOcrProgress(5);
+      const canvas = await preprocessImage(file);
+
+      // 2. 建立 Tesseract worker
       const { createWorker } = await import("tesseract.js");
       const worker = await createWorker("chi_tra", 1, {
         logger: (m) => {
           if (m.status === "recognizing text") {
-            setOcrProgress(Math.round((m.progress || 0) * 100));
+            // 預處理佔約 10%，識別佔 90%
+            setOcrProgress(10 + Math.round((m.progress || 0) * 90));
           }
         },
       });
-      const { data: { text } } = await worker.recognize(file);
+
+      // 3. 設定較適合課文嘅參數（PSM 6 = 單一均勻文字塊）
+      await worker.setParameters({
+        tessedit_pageseg_mode: "6",
+      });
+
+      // 4. 識別
+      const {
+        data: { text },
+      } = await worker.recognize(canvas);
+
       await worker.terminate();
-      const cleaned = text.replace(/\n{3,}/g, "\n\n").replace(/[ \t]+/g, " ").trim();
-      setOcrText(cleaned || "未能識別到文字，請試下再影清晰啲。");
+
+      const cleaned = text
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/[ \t]+/g, " ")
+        .trim();
+
+      setOcrText(cleaned || "未能識別到文字，請試下再影清晰啲、光線充足一啲。");
       setOcrStatus("done");
     } catch (err) {
       console.error(err);
-      setOcrText("識別失敗，請再試一次。");
+      setOcrText("識別失敗，請再試一次。可嘗試換張更清晰、光線更好的相片。");
       setOcrStatus("error");
     }
   };
@@ -371,7 +425,6 @@ export default function Home() {
 
   // ========== UI ==========
 
-  // 主選單
   if (mode === "menu") {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-amber-50">
@@ -408,7 +461,6 @@ export default function Home() {
     );
   }
 
-  // 選擇詞庫
   if (mode === "select") {
     return (
       <div className="min-h-screen p-4 bg-amber-50">
@@ -457,7 +509,6 @@ export default function Home() {
     );
   }
 
-  // 詞庫管理（加強版）
   if (mode === "manage") {
     return (
       <div className="min-h-screen p-4 bg-amber-50">
@@ -475,7 +526,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* 群組 Tabs */}
           <div className="flex gap-2 overflow-x-auto pb-2">
             {groups.map((g) => (
               <button
@@ -495,7 +545,6 @@ export default function Home() {
             ))}
           </div>
 
-          {/* 新增群組 */}
           <div className="flex gap-2">
             <input
               value={newGroupName}
@@ -512,7 +561,6 @@ export default function Home() {
             </button>
           </div>
 
-          {/* 目前管理緊邊個 */}
           <div className="bg-orange-50 rounded-2xl p-4 space-y-3">
             <div className="flex justify-between items-center gap-2">
               {editingGroupId === activeGroup.id ? (
@@ -564,7 +612,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* 新增詞語 */}
             <div className="space-y-2 pt-2 border-t border-orange-100">
               <input
                 value={newText}
@@ -589,11 +636,11 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 詞語列表 */}
           <div className="max-h-72 overflow-y-auto space-y-2">
             {activeGroup.words.length === 0 ? (
               <div className="text-center text-gray-400 py-8">
-                呢個詞庫仲係空嘅<br />
+                呢個詞庫仲係空嘅
+                <br />
                 <span className="text-sm">用上面表格加入詞語</span>
               </div>
             ) : (
@@ -623,7 +670,7 @@ export default function Home() {
     );
   }
 
-  // OCR
+  // OCR 頁面（加強提示）
   if (mode === "ocr") {
     return (
       <div className="min-h-screen p-4 bg-amber-50">
@@ -633,6 +680,16 @@ export default function Home() {
             <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">
               ← 返回
             </button>
+          </div>
+
+          <div className="bg-blue-50 text-blue-800 text-sm rounded-xl p-3 space-y-1">
+            <div className="font-medium">影相小貼士（提升準確度）：</div>
+            <ul className="list-disc list-inside space-y-0.5 text-xs">
+              <li>光線充足、平均，避免陰影同反光</li>
+              <li>手機對準，文字盡量水平、清晰</li>
+              <li>盡量只影文字區域，唔好太遠</li>
+              <li>一次影一頁或一段會準啲</li>
+            </ul>
           </div>
 
           <input
@@ -649,7 +706,9 @@ export default function Home() {
             disabled={ocrStatus === "loading"}
             className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white text-lg font-semibold py-4 rounded-2xl"
           >
-            {ocrStatus === "loading" ? `識別中... ${ocrProgress}%` : "📷 影相 / 選擇相片"}
+            {ocrStatus === "loading"
+              ? `處理同識別中... ${ocrProgress}%`
+              : "📷 影相 / 選擇相片"}
           </button>
 
           {ocrStatus === "loading" && (
@@ -663,12 +722,15 @@ export default function Home() {
 
           {(ocrStatus === "done" || ocrStatus === "error") && (
             <>
+              <label className="block text-sm font-medium text-gray-700">
+                識別結果（請檢查同修改）：
+              </label>
               <textarea
                 value={ocrText}
                 onChange={(e) => setOcrText(e.target.value)}
                 rows={10}
                 className="w-full border-2 border-orange-200 rounded-xl p-3 text-lg focus:border-orange-400 outline-none"
-                placeholder="識別結果（可修改）"
+                placeholder="識別出的文字會顯示在這裡..."
               />
               <button
                 onClick={startFromOcr}
@@ -678,6 +740,10 @@ export default function Home() {
               </button>
             </>
           )}
+
+          <p className="text-xs text-gray-400">
+            已加入圖像預處理（灰階 + 對比度 + 放大），有助提升繁體中文識別率。
+          </p>
         </div>
       </div>
     );
