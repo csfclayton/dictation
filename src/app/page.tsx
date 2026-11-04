@@ -50,52 +50,58 @@ function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-/** 圖像預處理：灰階 + 提高對比度 + 適度放大，提升 OCR 準確度 */
-async function preprocessImage(file: File): Promise<HTMLCanvasElement> {
+/** 圖像預處理：灰階 + 提高對比度 + 適度放大 */
+function preprocessImage(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
 
     img.onload = () => {
-      URL.revokeObjectURL(url);
+      try {
+        URL.revokeObjectURL(url);
 
-      // 如果圖片太細，放大到合理尺寸（有助中文識別）
-      const minWidth = 1200;
-      let scale = 1;
-      if (img.width < minWidth) {
-        scale = minWidth / img.width;
+        const minWidth = 1200;
+        let scale = 1;
+        if (img.width < minWidth) {
+          scale = minWidth / img.width;
+        }
+        scale = Math.min(scale, 2.2);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas not supported"));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        const contrast = 35;
+        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          let val = factor * (gray - 128) + 128;
+          val = Math.max(0, Math.min(255, val));
+          data[i] = data[i + 1] = data[i + 2] = val;
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error("toBlob failed"));
+          },
+          "image/png"
+        );
+      } catch (e) {
+        reject(e);
       }
-      // 限制最大不要太大，避免手機記憶體問題
-      scale = Math.min(scale, 2.5);
-
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("Canvas not supported"));
-        return;
-      }
-
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-      // 灰階 + 提高對比度
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      const contrast = 35; // 對比度強度
-      const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
-
-      for (let i = 0; i < data.length; i += 4) {
-        // 灰階
-        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        // 對比度
-        let val = factor * (gray - 128) + 128;
-        val = Math.max(0, Math.min(255, val));
-        data[i] = data[i + 1] = data[i + 2] = val;
-      }
-
-      ctx.putImageData(imageData, 0, 0);
-      resolve(canvas);
     };
 
     img.onerror = () => {
@@ -344,37 +350,35 @@ export default function Home() {
     );
   };
 
-  // ===== 優化後的 OCR =====
   const handleImage = async (file: File) => {
     setOcrStatus("loading");
     setOcrProgress(0);
     setOcrText("");
 
     try {
-      // 1. 預處理圖像
-      setOcrProgress(5);
-      const canvas = await preprocessImage(file);
+      setOcrProgress(8);
+      const processedBlob = await preprocessImage(file);
 
-      // 2. 建立 Tesseract worker
       const { createWorker } = await import("tesseract.js");
       const worker = await createWorker("chi_tra", 1, {
-        logger: (m) => {
+        logger: (m: { status?: string; progress?: number }) => {
           if (m.status === "recognizing text") {
-            // 預處理佔約 10%，識別佔 90%
             setOcrProgress(10 + Math.round((m.progress || 0) * 90));
           }
         },
       });
 
-      // 3. 設定較適合課文嘅參數（PSM 6 = 單一均勻文字塊）
-      await worker.setParameters({
-        tessedit_pageseg_mode: "6",
-      });
+      // 嘗試設定 PSM，失敗就略過（兼容不同版本）
+      try {
+        await worker.setParameters({
+          tessedit_pageseg_mode: "6" as any,
+        });
+      } catch {
+        // ignore
+      }
 
-      // 4. 識別
-      const {
-        data: { text },
-      } = await worker.recognize(canvas);
+      const result = await worker.recognize(processedBlob);
+      const text = result.data.text;
 
       await worker.terminate();
 
@@ -422,8 +426,6 @@ export default function Home() {
       </div>
     );
   }
-
-  // ========== UI ==========
 
   if (mode === "menu") {
     return (
@@ -670,7 +672,6 @@ export default function Home() {
     );
   }
 
-  // OCR 頁面（加強提示）
   if (mode === "ocr") {
     return (
       <div className="min-h-screen p-4 bg-amber-50">
@@ -749,7 +750,6 @@ export default function Home() {
     );
   }
 
-  // 練習頁面
   const item = practiceList[currentIndex];
 
   return (
