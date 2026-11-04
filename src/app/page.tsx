@@ -1,1 +1,633 @@
-RESTORED_FROM_LOCAL_FILE_PLEASE_READ
+"use client";
+
+import { useState, useRef, useEffect, useCallback } from "react";
+
+type WordItem = { text: string; jyutping?: string };
+type WordGroup = { id: string; name: string; words: WordItem[] };
+
+const defaultGroups: WordGroup[] = [
+  {
+    id: "default",
+    name: "預設詞庫",
+    words: [
+      { text: "爸爸", jyutping: "baa4 baa1" },
+      { text: "媽媽", jyutping: "maa4 maa1" },
+      { text: "哥哥", jyutping: "go4 go1" },
+      { text: "姐姐", jyutping: "ze4 ze1" },
+      { text: "弟弟", jyutping: "dai6 dai2" },
+      { text: "妹妹", jyutping: "mui6 mui2" },
+      { text: "學校", jyutping: "hok6 haau6" },
+      { text: "老師", jyutping: "lou5 si1" },
+      { text: "同學", jyutping: "tung4 hok6" },
+      { text: "書包", jyutping: "syu1 baau1" },
+      { text: "功課", jyutping: "gung1 fo3" },
+      { text: "默書", jyutping: "mak6 syu1" },
+      { text: "練習", jyutping: "lin6 zaap6" },
+      { text: "香港", jyutping: "hoeng1 gong2" },
+      { text: "廣東話", jyutping: "gwong2 dung1 waa2" },
+      { text: "朋友", jyutping: "pang4 jau5" },
+      { text: "今天", jyutping: "gam1 tin1" },
+      { text: "太陽", jyutping: "taai3 joeng4" },
+      { text: "水", jyutping: "seoi2" },
+      { text: "飯", jyutping: "faan6" },
+      { text: "書", jyutping: "syu1" },
+      { text: "貓", jyutping: "maau1" },
+      { text: "狗", jyutping: "gau2" },
+    ],
+  },
+];
+
+const STORAGE_KEY = "dictation_groups_v2";
+
+type Mode = "menu" | "manage" | "select" | "ocr" | "practice" | "quiz" | "quizPlay";
+
+type QuizQuestion = {
+  id: string;
+  topic: string;
+  question: string;
+  options: string[];
+  answer: number;
+};
+
+const quizBank: QuizQuestion[] = [
+  { id: "h1", topic: "健康", question: "下列哪一項最有助預防傳染病？", options: ["定時洗手", "少喝水", "長時間唔瞓覺", "食過多糖分"], answer: 0 },
+  { id: "h2", topic: "健康", question: "均衡飲食通常包括？", options: ["只食肉類", "五穀、蔬果、蛋白質等多樣食物", "只飲汽水", "只食零食"], answer: 1 },
+  { id: "h3", topic: "健康", question: "做運動主要有甚麼好處？", options: ["令身體更健康", "一定會變矮", "令視力變差", "唔使食嘢"], answer: 0 },
+  { id: "s1", topic: "科學", question: "電可以轉變成下列哪種能量？", options: ["光、熱、動能", "只有聲音", "只有氣味", "只有顏色"], answer: 0 },
+  { id: "s2", topic: "科學", question: "電路要點先會有電通過？", options: ["形成閉合電路", "電線斷開", "冇電池", "開關一直開住但斷路"], answer: 0 },
+  { id: "s3", topic: "科學", question: "光通常係沿甚麼路徑傳播？", options: ["直線", "只可以轉彎", "只可以向上", "隨機亂行"], answer: 0 },
+  { id: "s4", topic: "科學", question: "水由液態變成氣態嘅過程叫？", options: ["蒸發", "凝固", "融化", "昇華"], answer: 0 },
+  { id: "e1", topic: "環境", question: "節約能源可以點做？", options: ["唔使用時關燈同電器", "全日開冷氣唔關", "長開水龍頭", "浪費紙張"], answer: 0 },
+  { id: "e2", topic: "環境", question: "下列哪一項屬於可再生資源？", options: ["太陽能", "石油", "煤炭", "天然氣"], answer: 0 },
+  { id: "e3", topic: "環境", question: "減少浪費可以點做？", options: ["減少、重用、回收", "全部丟棄", "只買即棄物品", "唔分類回收"], answer: 0 },
+  { id: "hk1", topic: "香港", question: "香港特別行政區成立於哪一年？", options: ["1997年", "1984年", "2000年", "1967年"], answer: 0 },
+  { id: "hk2", topic: "香港", question: "《基本法》係？", options: ["香港特別行政區的憲制性文件", "一本小說", "學校校規", "交通規則"], answer: 0 },
+  { id: "hk3", topic: "香港", question: "香港主要使用邊種官方語言？", options: ["中文同英文", "只有普通話", "只有英文", "只有日文"], answer: 0 },
+  { id: "it1", topic: "資訊", question: "上網時保護個人資料好重要，因為？", options: ["避免資料被濫用", "令網速更快", "令電腦自動關機", "唔使交功課"], answer: 0 },
+  { id: "it2", topic: "資訊", question: "以下邊項係較安全的網上行為？", options: ["唔隨意公開個人地址電話", "同陌生人分享密碼", "亂下載未知檔案", "相信所有網上消息"], answer: 0 },
+  { id: "n1", topic: "國民", question: "中國的首都係？", options: ["北京", "上海", "廣州", "深圳"], answer: 0 },
+  { id: "n2", topic: "國民", question: "國旗上的五顆星代表？", options: ["全國人民大團結", "五個城市", "五種動物", "五座山"], answer: 0 },
+  { id: "n3", topic: "地理", question: "地球表面大部分被甚麼覆蓋？", options: ["海洋", "沙漠", "冰層", "森林"], answer: 0 },
+  { id: "s5", topic: "科學", question: "晝夜交替主要因為？", options: ["地球自轉", "地球唔郁", "月球發光", "太陽圍繞地球轉"], answer: 0 },
+  { id: "s6", topic: "科學", question: "植物進行光合作用需要？", options: ["陽光、水、二氧化碳", "只有黑暗", "只有泥土", "只有聲音"], answer: 0 },
+  { id: "h4", topic: "健康", question: "充足睡眠對小學生重要，因為有助？", options: ["身體同大腦發育", "一定長高十厘米", "唔使做運動", "可以唔食早餐"], answer: 0 },
+  { id: "e4", topic: "環境", question: "香港常見的天氣現象唔包括？", options: ["火山爆發", "颱風", "暴雨", "高溫"], answer: 0 },
+  { id: "it3", topic: "資訊", question: "收到可疑訊息或鏈結時應該？", options: ["唔好隨便點擊，可問家長或老師", "即刻點擊", "分享密碼", "轉發畀所有人"], answer: 0 },
+  { id: "hk4", topic: "香港", question: "香港位於中國的哪個方向？", options: ["南部", "最北端", "最西端", "青藏高原"], answer: 0 },
+];
+
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+export default function Home() {
+  const [mode, setMode] = useState<Mode>("menu");
+  const [groups, setGroups] = useState<WordGroup[]>(defaultGroups);
+  const [activeGroupId, setActiveGroupId] = useState("default");
+  const [loaded, setLoaded] = useState(false);
+  const [practiceList, setPracticeList] = useState<WordItem[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [input, setInput] = useState("");
+  const [result, setResult] = useState<"correct" | "wrong" | null>(null);
+  const [score, setScore] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [speechRate, setSpeechRate] = useState(0.85);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newText, setNewText] = useState("");
+  const [newJyutping, setNewJyutping] = useState("");
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [message, setMessage] = useState("");
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(["default"]);
+  const [ocrText, setOcrText] = useState("");
+  const [ocrStatus, setOcrStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [quizList, setQuizList] = useState<QuizQuestion[]>([]);
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizSelected, setQuizSelected] = useState<number | null>(null);
+  const [quizShowAnswer, setQuizShowAnswer] = useState(false);
+  const [quizFinished, setQuizFinished] = useState(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0] || defaultGroups[0];
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setGroups(parsed);
+          setActiveGroupId(parsed[0].id);
+          setSelectedGroupIds([parsed[0].id]);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
+  const saveGroups = useCallback((newGroups: WordGroup[]) => {
+    setGroups(newGroups);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newGroups));
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const showMessage = (msg: string) => {
+    setMessage(msg);
+    setTimeout(() => setMessage(""), 2000);
+  };
+
+  const stopAudio = useCallback(() => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsPlaying(false);
+  }, []);
+
+  const playAudio = useCallback(
+    (text: string) => {
+      if (!("speechSynthesis" in window)) {
+        alert("你的瀏覽器不支援語音合成");
+        return;
+      }
+      stopAudio();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "zh-HK";
+      utterance.rate = speechRate;
+      utterance.onend = () => setIsPlaying(false);
+      utterance.onerror = () => setIsPlaying(false);
+      setIsPlaying(true);
+      speechSynthesis.speak(utterance);
+    },
+    [speechRate, stopAudio]
+  );
+
+  const togglePlayPause = useCallback(() => {
+    if (!practiceList[currentIndex]) return;
+    if (isPlaying) stopAudio();
+    else playAudio(practiceList[currentIndex].text);
+  }, [isPlaying, currentIndex, practiceList, playAudio, stopAudio]);
+
+  useEffect(() => {
+    if (mode !== "practice") return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.code === "Space" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        togglePlayPause();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [mode, togglePlayPause]);
+
+  const checkAnswer = () => {
+    const item = practiceList[currentIndex];
+    if (!item) return;
+    if (input.trim() === item.text.trim()) {
+      setResult("correct");
+      setScore((s) => s + 1);
+    } else setResult("wrong");
+  };
+
+  const goTo = (index: number) => {
+    stopAudio();
+    setInput("");
+    setResult(null);
+    setCurrentIndex(index);
+  };
+
+  const nextItem = () => goTo((currentIndex + 1) % practiceList.length);
+  const prevItem = () => goTo((currentIndex - 1 + practiceList.length) % practiceList.length);
+
+  const createGroup = () => {
+    const name = newGroupName.trim();
+    if (!name) return alert("請輸入詞庫名稱");
+    const newGroup: WordGroup = { id: generateId(), name, words: [] };
+    saveGroups([...groups, newGroup]);
+    setActiveGroupId(newGroup.id);
+    setNewGroupName("");
+    showMessage(`已新增詞庫「${name}」`);
+  };
+
+  const deleteGroup = (id: string) => {
+    if (groups.length <= 1) return alert("至少要保留一個詞庫");
+    const target = groups.find((g) => g.id === id);
+    if (!confirm(`確定刪除詞庫「${target?.name}」？`)) return;
+    const updated = groups.filter((g) => g.id !== id);
+    saveGroups(updated);
+    if (activeGroupId === id) setActiveGroupId(updated[0].id);
+    setSelectedGroupIds((prev) => {
+      const next = prev.filter((x) => x !== id);
+      return next.length > 0 ? next : [updated[0].id];
+    });
+    showMessage("已刪除詞庫");
+  };
+
+  const renameGroup = (id: string) => {
+    const name = editGroupName.trim();
+    if (!name) return;
+    saveGroups(groups.map((g) => (g.id === id ? { ...g, name } : g)));
+    setEditingGroupId(null);
+    showMessage("已重新命名");
+  };
+
+  const addWordToActive = () => {
+    const text = newText.trim();
+    if (!text) return alert("請輸入中文詞語");
+    const current = groups.find((g) => g.id === activeGroupId) || groups[0];
+    if (!current) return;
+    if (current.words.some((w) => w.text === text)) return alert("詞語已存在");
+    saveGroups(
+      groups.map((g) =>
+        g.id === activeGroupId
+          ? { ...g, words: [...g.words, { text, jyutping: newJyutping.trim() || undefined }] }
+          : g
+      )
+    );
+    setNewText("");
+    setNewJyutping("");
+    showMessage(`已加入「${text}」`);
+  };
+
+  const deleteWord = (wordIndex: number) => {
+    const current = groups.find((g) => g.id === activeGroupId) || groups[0];
+    if (!current || !current.words[wordIndex]) return;
+    if (!confirm(`確定刪除「${current.words[wordIndex].text}」？`)) return;
+    saveGroups(
+      groups.map((g) =>
+        g.id === activeGroupId ? { ...g, words: g.words.filter((_, i) => i !== wordIndex) } : g
+      )
+    );
+    showMessage("已刪除詞語");
+  };
+
+  const startSelectedPractice = () => {
+    const allWords = groups.filter((g) => selectedGroupIds.includes(g.id)).flatMap((g) => g.words);
+    if (allWords.length === 0) return alert("所選詞庫冇任何詞語");
+    setPracticeList(allWords);
+    setCurrentIndex(0);
+    setScore(0);
+    setInput("");
+    setResult(null);
+    setMode("practice");
+  };
+
+  const toggleSelectGroup = (id: string) => {
+    setSelectedGroupIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const startQuiz = (count: number) => {
+    const picked = shuffle(quizBank).slice(0, Math.min(count, quizBank.length));
+    setQuizList(picked);
+    setQuizIndex(0);
+    setQuizScore(0);
+    setQuizSelected(null);
+    setQuizShowAnswer(false);
+    setQuizFinished(false);
+    setMode("quizPlay");
+  };
+
+  const submitQuizAnswer = () => {
+    if (quizSelected === null) return;
+    if (quizSelected === quizList[quizIndex].answer) setQuizScore((s) => s + 1);
+    setQuizShowAnswer(true);
+  };
+
+  const nextQuizQuestion = () => {
+    if (quizIndex + 1 >= quizList.length) setQuizFinished(true);
+    else {
+      setQuizIndex((i) => i + 1);
+      setQuizSelected(null);
+      setQuizShowAnswer(false);
+    }
+  };
+
+  const handleImage = async (file: File) => {
+    setOcrStatus("loading");
+    setOcrProgress(0);
+    setOcrText("");
+    try {
+      const { createWorker } = await import("tesseract.js");
+      const worker = await createWorker("chi_tra", 1, {
+        logger: (m: { status?: string; progress?: number }) => {
+          if (m.status === "recognizing text") {
+            setOcrProgress(Math.round((m.progress || 0) * 100));
+          }
+        },
+      });
+      const { data: { text } } = await worker.recognize(file);
+      await worker.terminate();
+      const cleaned = text.replace(/\n{3,}/g, "\n\n").replace(/[ \t]+/g, " ").trim();
+      setOcrText(cleaned || "未能識別到文字，請試下再影清晰啲。");
+      setOcrStatus("done");
+    } catch (err) {
+      console.error(err);
+      setOcrText("識別失敗，請再試一次。");
+      setOcrStatus("error");
+    }
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImage(file);
+  };
+
+  const startFromOcr = () => {
+    if (!ocrText.trim()) return;
+    const sentences = ocrText
+      .split(/(?<=[。！？\n])\s*/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 1);
+    if (sentences.length === 0) return alert("請先確認有文字內容");
+    setPracticeList(sentences.map((s) => ({ text: s })));
+    setCurrentIndex(0);
+    setScore(0);
+    setInput("");
+    setResult(null);
+    setMode("practice");
+  };
+
+  if (!loaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-amber-50">
+        <div className="text-gray-500">載入中...</div>
+      </div>
+    );
+  }
+
+  if (mode === "menu") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-amber-50">
+        <div className="bg-white rounded-3xl shadow-xl p-8 max-w-md w-full text-center space-y-4">
+          <h1 className="text-3xl font-bold text-orange-600">香港小學默書練習</h1>
+          <p className="text-gray-500 mb-2">廣東話 · 繁體中文</p>
+          <button onClick={() => setMode("select")} className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xl font-semibold py-4 rounded-2xl">開始默書練習</button>
+          <button onClick={() => setMode("manage")} className="w-full bg-purple-500 hover:bg-purple-600 text-white text-xl font-semibold py-4 rounded-2xl">📚 詞庫管理</button>
+          <button onClick={() => { setMode("ocr"); setOcrStatus("idle"); setOcrText(""); }} className="w-full bg-blue-500 hover:bg-blue-600 text-white text-xl font-semibold py-4 rounded-2xl">📸 影相匯入課文</button>
+          <button onClick={() => setMode("quiz")} className="w-full bg-teal-500 hover:bg-teal-600 text-white text-xl font-semibold py-4 rounded-2xl">🧠 常識問答測驗（小四至小五）</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "quiz") {
+    return (
+      <div className="min-h-screen p-4 bg-amber-50">
+        <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-5">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-teal-600">常識問答測驗</h2>
+            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">← 返回</button>
+          </div>
+          <p className="text-gray-600 text-sm">適合香港小學四至五年級，涵蓋健康、科學、環境、香港、資訊等課題。</p>
+          <p className="text-sm text-gray-500">題庫共有 {quizBank.length} 題，每次隨機抽取。</p>
+          <button onClick={() => startQuiz(5)} className="w-full bg-teal-500 hover:bg-teal-600 text-white text-lg font-semibold py-4 rounded-2xl">開始 5 題測驗</button>
+          <button onClick={() => startQuiz(10)} className="w-full bg-teal-600 hover:bg-teal-700 text-white text-lg font-semibold py-4 rounded-2xl">開始 10 題測驗</button>
+          <button onClick={() => startQuiz(quizBank.length)} className="w-full border-2 border-teal-500 text-teal-700 text-lg font-semibold py-4 rounded-2xl">全部題目練習</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "quizPlay") {
+    if (quizFinished) {
+      const total = quizList.length;
+      const percent = total ? Math.round((quizScore / total) * 100) : 0;
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4 bg-amber-50">
+          <div className="bg-white rounded-3xl shadow-xl p-8 max-w-md w-full text-center space-y-5">
+            <h2 className="text-2xl font-bold text-teal-600">測驗完成！</h2>
+            <div className="text-5xl font-bold text-orange-500">{quizScore} / {total}</div>
+            <div className="text-lg text-gray-600">正確率 {percent}%</div>
+            <button onClick={() => startQuiz(quizList.length)} className="w-full bg-teal-500 hover:bg-teal-600 text-white font-semibold py-3 rounded-2xl">再測一次</button>
+            <button onClick={() => setMode("quiz")} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-2xl">返回測驗選單</button>
+            <button onClick={() => setMode("menu")} className="w-full text-gray-500 text-sm">返回主選單</button>
+          </div>
+        </div>
+      );
+    }
+    const q = quizList[quizIndex];
+    if (!q) return null;
+    return (
+      <div className="min-h-screen p-4 bg-amber-50">
+        <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-4">
+          <div className="flex justify-between items-center text-sm text-gray-600">
+            <button onClick={() => setMode("quiz")} className="text-gray-500">← 退出</button>
+            <span>第 {quizIndex + 1} / {quizList.length} 題　分數 {quizScore}</span>
+          </div>
+          <div className="text-xs text-teal-600 font-medium">{q.topic}</div>
+          <div className="text-xl font-semibold text-gray-800 leading-relaxed">{q.question}</div>
+          <div className="space-y-2">
+            {q.options.map((opt, i) => {
+              let cls = "w-full text-left px-4 py-3 rounded-xl border-2 transition ";
+              if (quizShowAnswer) {
+                if (i === q.answer) cls += "border-green-500 bg-green-50 text-green-800";
+                else if (i === quizSelected) cls += "border-red-400 bg-red-50 text-red-700";
+                else cls += "border-gray-200 text-gray-500";
+              } else {
+                cls += quizSelected === i ? "border-teal-500 bg-teal-50" : "border-gray-200 hover:border-teal-300";
+              }
+              return (
+                <button key={i} disabled={quizShowAnswer} onClick={() => setQuizSelected(i)} className={cls}>
+                  {String.fromCharCode(65 + i)}. {opt}
+                </button>
+              );
+            })}
+          </div>
+          {!quizShowAnswer ? (
+            <button onClick={submitQuizAnswer} disabled={quizSelected === null} className="w-full bg-teal-500 hover:bg-teal-600 disabled:bg-gray-300 text-white font-semibold py-3 rounded-2xl">提交答案</button>
+          ) : (
+            <button onClick={nextQuizQuestion} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 rounded-2xl">
+              {quizIndex + 1 >= quizList.length ? "查看成績" : "下一題 →"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "select") {
+    return (
+      <div className="min-h-screen p-4 bg-amber-50">
+        <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-5">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-orange-600">選擇默書詞庫</h2>
+            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">← 返回</button>
+          </div>
+          <p className="text-sm text-gray-600">可同時選擇多個詞庫一齊練習</p>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {groups.map((g) => (
+              <label key={g.id} className={`flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer ${selectedGroupIds.includes(g.id) ? "border-orange-400 bg-orange-50" : "border-gray-200"}`}>
+                <input type="checkbox" checked={selectedGroupIds.includes(g.id)} onChange={() => toggleSelectGroup(g.id)} className="w-5 h-5" />
+                <div className="flex-1 text-left">
+                  <div className="font-medium text-lg">{g.name}</div>
+                  <div className="text-sm text-gray-500">{g.words.length} 個詞語</div>
+                </div>
+              </label>
+            ))}
+          </div>
+          <button onClick={startSelectedPractice} className="w-full bg-orange-500 hover:bg-orange-600 text-white text-lg font-semibold py-4 rounded-2xl">開始練習 →</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "manage") {
+    return (
+      <div className="min-h-screen p-4 bg-amber-50">
+        <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-5 space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-orange-600">詞庫管理</h2>
+            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">← 返回</button>
+          </div>
+          {message && <div className="bg-green-100 text-green-700 text-center py-2 rounded-xl text-sm">{message}</div>}
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {groups.map((g) => (
+              <button key={g.id} onClick={() => { setActiveGroupId(g.id); setEditingGroupId(null); }}
+                className={`px-4 py-2 rounded-full text-sm whitespace-nowrap ${activeGroupId === g.id ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-700"}`}>
+                {g.name} ({g.words.length})
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && createGroup()}
+              placeholder="輸入新詞庫名稱" className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400" />
+            <button onClick={createGroup} className="bg-green-500 hover:bg-green-600 text-white px-4 rounded-xl font-medium">新增詞庫</button>
+          </div>
+          <div className="bg-orange-50 rounded-2xl p-4 space-y-3">
+            <div className="flex justify-between items-center gap-2">
+              {editingGroupId === activeGroup.id ? (
+                <div className="flex gap-2 flex-1 items-center">
+                  <input value={editGroupName} onChange={(e) => setEditGroupName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && renameGroup(activeGroup.id)}
+                    className="flex-1 border rounded-lg px-2 py-1" autoFocus />
+                  <button onClick={() => renameGroup(activeGroup.id)} className="text-green-600 text-sm font-medium">儲存</button>
+                  <button onClick={() => setEditingGroupId(null)} className="text-gray-500 text-sm">取消</button>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <div className="text-xs text-gray-500">目前管理</div>
+                    <div className="font-bold text-lg">{activeGroup.name}</div>
+                  </div>
+                  <div className="flex gap-3 text-sm">
+                    <button onClick={() => { setEditingGroupId(activeGroup.id); setEditGroupName(activeGroup.name); }} className="text-blue-600">重新命名</button>
+                    <button onClick={() => deleteGroup(activeGroup.id)} className="text-red-500">刪除</button>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="space-y-2 pt-2 border-t border-orange-100">
+              <input value={newText} onChange={(e) => setNewText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWordToActive()}
+                placeholder="中文詞語（必填）" className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400" />
+              <input value={newJyutping} onChange={(e) => setNewJyutping(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWordToActive()}
+                placeholder="粵拼（可選）" className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400" />
+              <button onClick={addWordToActive} className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 rounded-xl">＋ 加入「{activeGroup.name}」</button>
+            </div>
+          </div>
+          <div className="max-h-72 overflow-y-auto space-y-2">
+            {activeGroup.words.length === 0 ? (
+              <div className="text-center text-gray-400 py-8">呢個詞庫仲係空嘅</div>
+            ) : (
+              activeGroup.words.map((w, i) => (
+                <div key={`${activeGroup.id}-${i}-${w.text}`} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
+                  <div>
+                    <div className="font-medium">{w.text}</div>
+                    {w.jyutping && <div className="text-sm text-gray-500">{w.jyutping}</div>}
+                  </div>
+                  <button onClick={() => deleteWord(i)} className="text-red-500 text-sm px-2 py-1">刪除</button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "ocr") {
+    return (
+      <div className="min-h-screen p-4 bg-amber-50">
+        <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-5">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-orange-600">影相匯入課文</h2>
+            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">← 返回</button>
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={onFileChange} className="hidden" />
+          <button onClick={() => fileInputRef.current?.click()} disabled={ocrStatus === "loading"}
+            className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white text-lg font-semibold py-4 rounded-2xl">
+            {ocrStatus === "loading" ? `識別中... ${ocrProgress}%` : "📷 影相 / 選擇相片"}
+          </button>
+          {ocrStatus === "loading" && (
+            <div className="w-full bg-gray-200 rounded-full h-3">
+              <div className="bg-blue-500 h-3 rounded-full transition-all" style={{ width: `${ocrProgress}%` }} />
+            </div>
+          )}
+          {(ocrStatus === "done" || ocrStatus === "error") && (
+            <>
+              <textarea value={ocrText} onChange={(e) => setOcrText(e.target.value)} rows={10}
+                className="w-full border-2 border-orange-200 rounded-xl p-3 text-lg focus:border-orange-400 outline-none" placeholder="識別結果（可修改）" />
+              <button onClick={startFromOcr} className="w-full bg-green-500 hover:bg-green-600 text-white text-lg font-semibold py-4 rounded-2xl">開始默寫呢段文字 →</button>
+            </>
+          )}
+          <p className="text-xs text-gray-400">提示：影相時盡量影清晰、光線充足、字體正。</p>
+        </div>
+      </div>
+    );
+  }
+
+  const item = practiceList[currentIndex];
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 bg-amber-50">
+      <div className="bg-white rounded-3xl shadow-xl p-6 max-w-md w-full text-center space-y-4">
+        <div className="flex justify-between items-center">
+          <button onClick={() => { stopAudio(); setMode("menu"); }} className="text-gray-500 text-sm">← 返回</button>
+          <div className="text-sm text-gray-600">{currentIndex + 1} / {practiceList.length}　分數 {score}</div>
+        </div>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-gray-500 whitespace-nowrap">語速</span>
+          <input type="range" min="0.6" max="1.2" step="0.05" value={speechRate} onChange={(e) => setSpeechRate(parseFloat(e.target.value))} className="flex-1" />
+          <span className="w-10 text-right">{speechRate.toFixed(2)}</span>
+        </div>
+        <button onClick={togglePlayPause} className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xl font-semibold py-4 rounded-2xl">
+          {isPlaying ? "⏸ 暫停（空白鍵）" : "▶️ 播放（空白鍵）"}
+        </button>
+        <textarea value={input} onChange={(e) => setInput(e.target.value)} rows={item && item.text.length > 20 ? 4 : 2}
+          className="w-full text-2xl border-4 border-orange-200 focus:border-orange-400 rounded-2xl px-4 py-3 text-center outline-none" placeholder="喺度輸入答案" autoFocus />
+        <div className="flex gap-2">
+          <button onClick={prevItem} className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-2xl">← 上一句</button>
+          <button onClick={checkAnswer} className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-2xl">檢查 ✅</button>
+          <button onClick={nextItem} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-2xl">下一句 →</button>
+        </div>
+        {result && item && (
+          <div className={`text-xl font-bold p-4 rounded-2xl ${result === "correct" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+            {result === "correct" ? "正確！👍" : (
+              <>
+                <div>正確答案：</div>
+                <div className="mt-1 text-lg break-words">{item.text}</div>
+                {item.jyutping && <div className="text-sm mt-1 text-gray-600">粵拼：{item.jyutping}</div>}
+              </>
+            )}
+          </div>
+        )}
+        <p className="text-xs text-gray-400">提示：按空白鍵可快速暫停 / 播放</p>
+      </div>
+    </div>
+  );
+}
