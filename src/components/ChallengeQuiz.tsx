@@ -19,7 +19,7 @@ import {
   type LeaderboardEntry,
 } from "@/lib/quizHelpers";
 import { Confetti, ScorePopup } from "@/components/GameEffects";
-import { isCloudSyncEnabled } from "@/lib/firebase";
+import { FIREBASE_ENABLED } from "@/lib/firebaseConfig";
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -57,13 +57,8 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   const [combo, setCombo] = useState(0);
   const [showCombo, setShowCombo] = useState(false);
   const [boardLoading, setBoardLoading] = useState(false);
-  const [cloudOn] = useState(() => {
-    try {
-      return isCloudSyncEnabled();
-    } catch {
-      return false;
-    }
-  });
+  // 直接讀設定檔，避免 SDK 載入順序影響 UI 顯示
+  const cloudOn = FIREBASE_ENABLED;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bgRef = useRef<{ stop: () => void } | null>(null);
 
