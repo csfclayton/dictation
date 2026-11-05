@@ -21,6 +21,11 @@ import {
   type ManagedQuestion,
 } from "@/lib/quizBankStore";
 import { FIREBASE_ENABLED } from "@/lib/firebaseConfig";
+import {
+  loadChallengeSettings,
+  saveChallengeSettings,
+} from "@/lib/challengeSettings";
+import { clearLeaderboardAll } from "@/lib/quizHelpers";
 
 const emptyForm = {
   topic: "科學",
@@ -49,11 +54,19 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
     { batchId: string; batchLabel: string; count: number; importedAt: number }[]
   >([]);
   const [showBatches, setShowBatches] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+  const [timeLimit, setTimeLimit] = useState(10);
 
   const refresh = () => {
     setList(getManagedList());
     setBatches(listCustomBatches());
   };
+
+  useEffect(() => {
+    const s = loadChallengeSettings();
+    setSoundOn(s.soundOn);
+    setTimeLimit(s.timeLimit);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -228,12 +241,12 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
       <div className="min-h-screen p-4 bg-amber-50 flex items-center justify-center">
         <div className="max-w-sm w-full bg-white rounded-3xl shadow-xl p-6 space-y-4 anim-fade-in">
           <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-teal-600">📝 題庫管理</h2>
+            <h2 className="text-xl font-bold text-teal-600">📝 題庫管理及設定</h2>
             <button type="button" onClick={onBack} className="text-sm text-gray-500">
               ← 返回
             </button>
           </div>
-          <p className="text-sm text-gray-500 text-center">請輸入管理密碼先可以改題庫</p>
+          <p className="text-sm text-gray-500 text-center">請輸入管理密碼（題庫與挑戰設定）</p>
           <input
             type="password"
             inputMode="numeric"
@@ -283,7 +296,7 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
       <div className="max-w-lg mx-auto space-y-4">
         <div className="bg-white rounded-3xl shadow-xl p-5 space-y-3 anim-fade-in">
           <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-teal-600">📝 題庫管理</h2>
+            <h2 className="text-xl font-bold text-teal-600">📝 題庫管理及設定</h2>
             <button type="button" onClick={onBack} className="text-sm text-gray-500">
               ← 返回
             </button>
@@ -335,6 +348,73 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
               ☁️ 立即同步到雲端
             </button>
           )}
+
+          <div className="border-2 border-gray-100 rounded-2xl p-4 space-y-3 bg-gray-50">
+            <div className="font-medium text-gray-700 text-sm">⚙️ 挑戰模式設定</div>
+            <label className="flex items-center justify-between text-sm">
+              <span>音效與背景音樂</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !soundOn;
+                  setSoundOn(next);
+                  saveChallengeSettings({ soundOn: next, timeLimit });
+                  flash(next ? "已開啟音效" : "已關閉音效");
+                }}
+                className={`px-4 py-1.5 rounded-full font-medium ${soundOn ? "bg-green-500 text-white" : "bg-gray-300 text-gray-600"}`}
+              >
+                {soundOn ? "開" : "關"}
+              </button>
+            </label>
+            <p className="text-xs text-gray-400">挑戰時播放 Schoolyard Quest 背景音樂</p>
+            <div className="text-sm space-y-2">
+              <div className="flex justify-between">
+                <span>每題答題時間</span>
+                <span className="font-bold text-red-600">{timeLimit} 秒</span>
+              </div>
+              <input
+                type="range"
+                min={5}
+                max={30}
+                step={1}
+                value={timeLimit}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  setTimeLimit(v);
+                  saveChallengeSettings({ soundOn, timeLimit: v });
+                }}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-gray-400">
+                <span>5秒</span>
+                <span>30秒</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                if (
+                  !confirm(
+                    cloudOn
+                      ? "確定清除雲端＋本機所有龍虎榜成績？"
+                      : "確定清除本機龍虎榜成績？"
+                  )
+                )
+                  return;
+                const r = await clearLeaderboardAll();
+                alert(
+                  r.cloud
+                    ? "已清除雲端及本機龍虎榜"
+                    : "已清除本機龍虎榜" +
+                        (cloudOn ? "（雲端清除失敗，請檢查 Firebase 規則）" : "")
+                );
+              }}
+              className="w-full border border-red-300 text-red-500 text-sm font-medium py-2 rounded-xl"
+            >
+              清除龍虎榜成績
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() => setShowBatches((v) => !v)}
@@ -350,9 +430,9 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
               <div className="flex flex-wrap gap-1.5">
                 {(
                   [
-                    ["all", "全部", "teal"],
-                    ["custom", "只看自訂", "orange"],
-                    ["builtin", "只看內建", "gray"],
+                    ["all", "全部"],
+                    ["custom", "只看自訂"],
+                    ["builtin", "只看內建"],
                   ] as const
                 ).map(([k, label]) => (
                   <button
