@@ -110,18 +110,52 @@ export function createBgMusic(): { stop: () => void } | null {
   const ctx = getAudioCtx();
   if (!ctx) return null;
   if (ctx.state === "suspended") void ctx.resume();
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = "sine";
-  osc.frequency.value = 220;
-  gain.gain.value = 0.015;
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start();
+
+  const notes = [261.63, 293.66, 329.63, 392.0, 440.0, 392.0, 329.63, 293.66];
+  let noteIndex = 0;
+  let stopped = false;
+  const master = ctx.createGain();
+  master.gain.value = 0.04;
+  master.connect(ctx.destination);
+
+  const playNote = () => {
+    if (stopped) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = notes[noteIndex % notes.length];
+    noteIndex++;
+    gain.gain.value = 0.0001;
+    osc.connect(gain);
+    gain.connect(master);
+    const now = ctx.currentTime;
+    gain.gain.linearRampToValueAtTime(0.06, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    osc.start(now);
+    osc.stop(now + 0.6);
+  };
+
+  playNote();
+  const interval = setInterval(playNote, 480);
+
+  const pad = ctx.createOscillator();
+  const padGain = ctx.createGain();
+  pad.type = "sine";
+  pad.frequency.value = 130.81;
+  padGain.gain.value = 0.012;
+  pad.connect(padGain);
+  padGain.connect(master);
+  pad.start();
+
   return {
     stop: () => {
+      stopped = true;
+      clearInterval(interval);
       try {
-        osc.stop();
+        pad.stop();
+      } catch {}
+      try {
+        master.disconnect();
       } catch {}
     },
   };
