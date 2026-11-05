@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { quizBank } from "@/data/quizBank";
+import { getActiveQuizBank } from "@/lib/quizBankStore";
+import QuizBankManager from "@/components/QuizBankManager";
 import type { QuizQuestion } from "@/data/quizTypes";
 import {
   ALL_TOPICS,
@@ -62,7 +63,8 @@ type View =
   | "challengeSetup"
   | "challengePlay"
   | "challengeResult"
-  | "leaderboard";
+  | "leaderboard"
+  | "bankManage";
 
 export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   const [view, setView] = useState<View>("menu");
@@ -138,8 +140,9 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   );
 
   const pool = () => {
-    const f = quizBank.filter((q) => topics.includes(q.topic));
-    return f.length ? f : quizBank;
+    const bank = getActiveQuizBank();
+    const f = bank.filter((q) => topics.includes(q.topic));
+    return f.length ? f : bank;
   };
 
   const startPractice = (n: number) => {
@@ -290,6 +293,10 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     </div>
   );
 
+  if (view === "bankManage") {
+    return <QuizBankManager onBack={() => setView("menu")} />;
+  }
+
   if (view === "menu") {
     return (
       <div className="min-h-screen p-4 bg-amber-50">
@@ -298,9 +305,10 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
             <h2 className="text-2xl font-bold text-teal-600">🧠 常識問答</h2>
             <button onClick={onBack} className="text-gray-500 text-sm">← 主頁</button>
           </div>
-          <p className="text-sm text-gray-500">題庫 {quizBank.length} 題 · 答案隨機排列</p>
+          <p className="text-sm text-gray-500">題庫 {getActiveQuizBank().length} 題 · 答案隨機排列</p>
           <button type="button" onClick={() => { playClick(); setView("practiceMenu"); }} className="w-full bg-teal-500 hover:bg-teal-600 text-white text-xl font-semibold py-4 rounded-2xl btn-press card-hover">📖 常識練習</button>
           <button type="button" onClick={() => { playClick(); setView("challengeSetup"); }} className="w-full bg-red-500 hover:bg-red-600 text-white text-xl font-semibold py-4 rounded-2xl btn-press card-hover">⚡ 挑戰模式</button>
+          <button type="button" onClick={() => { playClick(); setView("bankManage"); }} className="w-full border-2 border-teal-400 text-teal-700 font-semibold py-3 rounded-2xl btn-press">📝 題庫管理</button>
           <button type="button" onClick={() => { playClick(); setView("leaderboard"); void refreshBoard(); }} className="w-full border-2 border-orange-400 text-orange-600 font-semibold py-3 rounded-2xl btn-press">🏆 龍虎榜</button>
         </div>
       </div>
