@@ -65,12 +65,16 @@ export function getManagedList(): ManagedQuestion[] {
 
 export function addCustomQuestion(q: Omit<QuizQuestion, "id"> & { id?: string }): QuizQuestion {
   const list = loadCustomQuestions();
+  const now = Date.now();
   const item: QuizQuestion = {
     id: q.id || "c_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     topic: q.topic,
     question: q.question.trim(),
     options: q.options.map((o) => o.trim()),
     answer: q.answer,
+    batchId: q.batchId || "manual_" + now,
+    batchLabel: q.batchLabel || "手動新增",
+    importedAt: q.importedAt || now,
   };
   list.unshift(item);
   saveCustomQuestions(list);
@@ -204,10 +208,77 @@ export function parseImportLines(text: string): { ok: QuizQuestion[]; errors: st
   return { ok, errors };
 }
 
-export function importCustomQuestions(questions: QuizQuestion[]) {
+export function importCustomQuestions(
+  questions: QuizQuestion[],
+  batchLabel?: string
+) {
+  const now = Date.now();
+  const batchId = "imp_" + now.toString(36) + Math.random().toString(36).slice(2, 6);
+  const label =
+    batchLabel?.trim() ||
+    `匯入 ${new Date(now).toLocaleString("zh-HK", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+  const stamped = questions.map((q) => ({
+    ...q,
+    batchId: q.batchId || batchId,
+    batchLabel: q.batchLabel || label,
+    importedAt: q.importedAt || now,
+  }));
   const list = loadCustomQuestions();
-  saveCustomQuestions([...questions, ...list]);
+  saveCustomQuestions([...stamped, ...list]);
   void pushQuizBankToCloud();
+  return { batchId, batchLabel: label, count: stamped.length };
+}
+
+export function deleteByBatchId(batchId: string): number {
+  const list = loadCustomQuestions();
+  const next = list.filter((q) => q.batchId !== batchId);
+  const removed = list.length - next.length;
+  if (removed > 0) {
+    saveCustomQuestions(next);
+    void pushQuizBankToCloud();
+  }
+  return removed;
+}
+
+export function deleteLegacyCustom(): number {
+  const list = loadCustomQuestions();
+  const next = list.filter((q) => q.batchId);
+  const removed = list.length - next.length;
+  if (removed > 0) {
+    saveCustomQuestions(next);
+    void pushQuizBankToCloud();
+  }
+  return removed;
+}
+
+export function listCustomBatches(): {
+  batchId: string;
+  batchLabel: string;
+  count: number;
+  importedAt: number;
+}[] {
+  const map = new Map<
+    string,
+    { batchId: string; batchLabel: string; count: number; importedAt: number }
+  >();
+  for (const q of loadCustomQuestions()) {
+    const id = q.batchId || "legacy";
+    const label = q.batchLabel || (id === "legacy" ? "舊有自訂（無批次）" : id);
+    const at = q.importedAt || 0;
+    const cur = map.get(id);
+    if (cur) {
+      cur.count++;
+      if (at && at < cur.importedAt) cur.importedAt = at;
+    } else {
+      map.set(id, { batchId: id, batchLabel: label, count: 1, importedAt: at });
+    }
+  }
+  return [...map.values()].sort((a, b) => b.importedAt - a.importedAt);
 }
 
 export function exportCustomAsText(): string {
