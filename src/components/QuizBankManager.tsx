@@ -263,23 +263,48 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
           <div className="bg-white rounded-3xl shadow-xl p-5 space-y-3 anim-slide-up">
             <h3 className="font-bold text-gray-800">批量匯入／匯出</h3>
             <p className="text-xs text-gray-500 leading-relaxed">
-              每行一題，用 <code className="bg-gray-100 px-1">|</code> 分隔：
+              支援 <b>CSV</b> 或用 <code className="bg-gray-100 px-1">|</code> 分隔。每行一題，7 欄：
               <br />
               <code className="text-[11px] bg-gray-50 block p-2 rounded-lg mt-1 break-all">
-                主題|題目|選項A|選項B|選項C|選項D|正確答案
+                主題,題目,選項A,選項B,選項C,選項D,正確答案
               </code>
-              正確答案可用 A–D 或 0–3。例：
+              正確答案：A–D 或 0–3。可有表頭列。例：
               <br />
               <code className="text-[11px] bg-gray-50 block p-2 rounded-lg mt-1 break-all">
-                科學|地球繞什麼轉？|太陽|月球|火星|金星|A
+                科學,地球繞什麼轉？,太陽,月球,火星,金星,A
               </code>
             </p>
+            <div className="space-y-2">
+              <label className="block">
+                <span className="text-sm text-gray-600">上載 CSV 檔案</span>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="mt-1 block w-full text-sm"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const text = await file.text();
+                      setImportText(text);
+                      flash(`已讀取「${file.name}」，請按匯入`);
+                    } catch {
+                      flash("讀取檔案失敗");
+                    }
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <p className="text-xs text-gray-400">
+                Excel：另存為「CSV UTF-8（逗號分隔）」再上載。Google 試算表：檔案 → 下載 → CSV。
+              </p>
+            </div>
             <textarea
               value={importText}
               onChange={(e) => setImportText(e.target.value)}
               rows={6}
               className="w-full border-2 rounded-xl px-3 py-2 text-sm font-mono"
-              placeholder="貼上多行題目…"
+              placeholder="貼上 CSV / 管道格式，或先上載檔案…"
             />
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -294,7 +319,7 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
                 onClick={doExport}
                 className="border-2 border-orange-400 text-orange-600 font-semibold py-2.5 rounded-xl"
               >
-                匯出自我訂題
+                匯出為文字
               </button>
             </div>
             {customCount > 0 && (
