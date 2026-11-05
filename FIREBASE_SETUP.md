@@ -1,6 +1,6 @@
-# Firebase 雲端龍虎榜設定教學
+# Firebase 雲端龍虎榜＋題庫設定教學
 
-完成後，所有裝置開啟同一個網站，會看到**同一份**龍虎榜。
+完成後，所有裝置開啟同一個網站，會看到**同一份**龍虎榜同**自訂題庫**。
 
 ## 1. 建立 Firebase 專案
 
@@ -16,7 +16,7 @@
 3. 選 **以測試模式開始**（之後會改規則）
 4. 地點建議 `asia-east1`（台灣）或 `asia-east2`（香港）
 
-## 3. 設定安全規則
+## 3. 設定安全規則（龍虎榜 + 題庫）
 
 在 Firestore → **規則** 貼上：
 
@@ -37,11 +37,18 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if true;
     }
+    // 題庫（自訂題 + 停用列表）
+    match /quiz_settings/{doc} {
+      allow read: if true;
+      allow write: if true;
+    }
   }
 }
 ```
 
 按 **發布**。
+
+> 若你之前已發布過規則，請**補上** `quiz_settings` 嗰段，否則題庫無法寫入雲端。
 
 ## 4. 註冊網頁應用程式
 
@@ -52,31 +59,22 @@ service cloud.firestore {
 
 ## 5. 填入本專案設定
 
-編輯：`src/lib/firebaseConfig.ts`
-
-把 `apiKey`、`authDomain`、`projectId` 等貼上，例如：
-
-```ts
-export const firebaseConfig = {
-  apiKey: "AIza...",
-  authDomain: "xxx.firebaseapp.com",
-  projectId: "xxx",
-  storageBucket: "xxx.appspot.com",
-  messagingSenderId: "123...",
-  appId: "1:123:web:abc",
-};
-```
-
-存檔後 push 到 GitHub，等 GitHub Pages 重新部署。
+編輯：`src/lib/firebaseConfig.ts`（已填好可略過）
 
 ## 6. 驗證
 
-1. 用手機挑戰一次，寫入成績
-2. 用另一部裝置開同一網址 → 龍虎榜應見到同一筆
-3. 畫面會顯示「☁️ 雲端同步」
+### 龍虎榜
+1. 用手機挑戰一次
+2. 另一部裝置開龍虎榜 → 應見到同一筆
+
+### 題庫
+1. 題庫管理 → 新增／匯入題目
+2. 撳「☁️ 立即同步到雲端」
+3. Firestore → 資料 → 應有集合 `quiz_settings` → 文件 `main`
+4. 另一部裝置開題庫管理 → 應載入同一批自訂題
 
 ## 注意
 
 - `apiKey` 出現在前端係 Firebase 正常設計，真正保護靠 **Firestore 規則**
-- 若網站完全公開，建議之後把 `allow delete` 改成 `false`，清除改在 Console 做
+- 題庫雲端用「最後寫入為準」；唔好兩部機同時大改
 - 未填設定前，App 會自動用本機儲存，唔會壞
