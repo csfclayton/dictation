@@ -15,7 +15,6 @@ import {
   sfxWrong,
   sfxUrgent,
   sfxComplete,
-  createBgMusic,
   type LeaderboardEntry,
 } from "@/lib/quizHelpers";
 import { Confetti, ScorePopup } from "@/components/GameEffects";
@@ -23,6 +22,37 @@ import { FIREBASE_ENABLED } from "@/lib/firebaseConfig";
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+/** 挑戰背景音樂（public/Schoolyard_Quest.mp3） */
+function playChallengeBgm(): { stop: () => void } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const base =
+      window.location.pathname.startsWith("/dictation")
+        ? "/dictation"
+        : "";
+    const audio = new Audio(`${base}/Schoolyard_Quest.mp3`);
+    audio.loop = true;
+    audio.volume = 0.45;
+    audio.preload = "auto";
+    const p = audio.play();
+    if (p && typeof p.catch === "function") {
+      p.catch((err) => console.warn("BGM play blocked or missing file", err));
+    }
+    return {
+      stop: () => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.src = "";
+        } catch {}
+      },
+    };
+  } catch (e) {
+    console.warn("BGM init failed", e);
+    return null;
+  }
 }
 
 type View =
@@ -57,7 +87,6 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   const [combo, setCombo] = useState(0);
   const [showCombo, setShowCombo] = useState(false);
   const [boardLoading, setBoardLoading] = useState(false);
-  // 直接讀設定檔，避免 SDK 載入順序影響 UI 顯示
   const cloudOn = FIREBASE_ENABLED;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bgRef = useRef<{ stop: () => void } | null>(null);
@@ -145,7 +174,7 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     setTimeLeft(timeLimit);
     setView("challengePlay");
     playClick();
-    if (bgOn) bgRef.current = createBgMusic();
+    if (bgOn) bgRef.current = playChallengeBgm();
   };
 
   const finishCh = useCallback(
@@ -378,7 +407,7 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
                   <span>音效與背景音樂</span>
                   <button type="button" onClick={() => setBgOn((v) => !v)} className={`px-4 py-1.5 rounded-full font-medium ${bgOn ? "bg-green-500 text-white" : "bg-gray-300 text-gray-600"}`}>{bgOn ? "開" : "關"}</button>
                 </label>
-                <p className="text-xs text-gray-400">挑戰時會播放輕柔背景音樂</p>
+                <p className="text-xs text-gray-400">挑戰時會播放背景音樂 Schoolyard Quest（可在設定關閉）</p>
                 <div className="text-sm space-y-2">
                   <div className="flex justify-between"><span>每題答題時間</span><span className="font-bold text-red-600">{timeLimit} 秒</span></div>
                   <input type="range" min={5} max={30} step={1} value={timeLimit} onChange={(e) => setTimeLimit(parseInt(e.target.value, 10))} className="w-full" />
