@@ -43,7 +43,7 @@ export function shuffleQuestion(q: QuizQuestion): QuizQuestion {
   };
 }
 
-export function loadLeaderboard(): LeaderboardEntry[] {
+export function loadLeaderboardLocal(): LeaderboardEntry[] {
   try {
     const raw = localStorage.getItem(LEADERBOARD_KEY);
     if (!raw) return [];
@@ -54,11 +54,64 @@ export function loadLeaderboard(): LeaderboardEntry[] {
   }
 }
 
-export function saveLeaderboardEntry(entry: LeaderboardEntry) {
-  const list = loadLeaderboard();
+/** 同步本機版本（兼容舊呼叫）；畫面請優先用 loadLeaderboardAsync */
+export function loadLeaderboard(): LeaderboardEntry[] {
+  return loadLeaderboardLocal();
+}
+
+export function saveLeaderboardLocal(entry: LeaderboardEntry) {
+  const list = loadLeaderboardLocal();
   list.push(entry);
   list.sort((a, b) => b.score - a.score);
   localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(list.slice(0, 50)));
+}
+
+export function clearLeaderboardLocal() {
+  localStorage.removeItem(LEADERBOARD_KEY);
+}
+
+export async function loadLeaderboardAsync(): Promise<LeaderboardEntry[]> {
+  try {
+    const { isCloudSyncEnabled, cloudLoadLeaderboard } = await import("@/lib/firebase");
+    if (isCloudSyncEnabled()) {
+      const cloud = await cloudLoadLeaderboard();
+      if (cloud) {
+        try {
+          localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(cloud.slice(0, 50)));
+        } catch {}
+        return cloud;
+      }
+    }
+  } catch (e) {
+    console.warn("cloud load fallback", e);
+  }
+  return loadLeaderboardLocal();
+}
+
+export async function saveLeaderboardEntry(entry: LeaderboardEntry): Promise<void> {
+  saveLeaderboardLocal(entry);
+  try {
+    const { isCloudSyncEnabled, cloudSaveLeaderboardEntry } = await import("@/lib/firebase");
+    if (isCloudSyncEnabled()) {
+      await cloudSaveLeaderboardEntry(entry);
+    }
+  } catch (e) {
+    console.warn("cloud save failed, kept local", e);
+  }
+}
+
+export async function clearLeaderboardAll(): Promise<{ cloud: boolean; local: boolean }> {
+  clearLeaderboardLocal();
+  let cloud = false;
+  try {
+    const { isCloudSyncEnabled, cloudClearLeaderboard } = await import("@/lib/firebase");
+    if (isCloudSyncEnabled()) {
+      cloud = await cloudClearLeaderboard();
+    }
+  } catch (e) {
+    console.warn("cloud clear failed", e);
+  }
+  return { cloud, local: true };
 }
 
 let audioCtx: AudioContext | null = null;
