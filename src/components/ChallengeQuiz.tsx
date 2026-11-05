@@ -10,7 +10,6 @@ import {
   shuffleQuestion,
   loadLeaderboardAsync,
   saveLeaderboardEntry,
-  clearLeaderboardAll,
   sfxClick,
   sfxCorrect,
   sfxWrong,
@@ -20,19 +19,16 @@ import {
 } from "@/lib/quizHelpers";
 import { Confetti, ScorePopup } from "@/components/GameEffects";
 import { FIREBASE_ENABLED } from "@/lib/firebaseConfig";
+import { loadChallengeSettings } from "@/lib/challengeSettings";
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-/** 挑戰背景音樂（public/Schoolyard_Quest.mp3） */
 function playChallengeBgm(): { stop: () => void } | null {
   if (typeof window === "undefined") return null;
   try {
-    const base =
-      window.location.pathname.startsWith("/dictation")
-        ? "/dictation"
-        : "";
+    const base = window.location.pathname.startsWith("/dictation") ? "/dictation" : "";
     const audio = new Audio(`${base}/Schoolyard_Quest.mp3`);
     audio.loop = true;
     audio.volume = 0.45;
@@ -83,7 +79,6 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   const [board, setBoard] = useState<LeaderboardEntry[]>([]);
   const [bgOn, setBgOn] = useState(true);
   const [timeLimit, setTimeLimit] = useState(10);
-  const [showSettings, setShowSettings] = useState(false);
   const [scorePopup, setScorePopup] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const [combo, setCombo] = useState(0);
@@ -131,6 +126,12 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     bgRef.current = null;
   }, []);
 
+  useEffect(() => {
+    const s = loadChallengeSettings();
+    setBgOn(s.soundOn);
+    setTimeLimit(s.timeLimit);
+  }, []);
+
   useEffect(
     () => () => {
       clearTimer();
@@ -160,6 +161,9 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   };
 
   const startChallenge = () => {
+    const s = loadChallengeSettings();
+    setBgOn(s.soundOn);
+    setTimeLimit(s.timeLimit);
     if (!name.trim()) return alert("請先輸入名字");
     if (!topics.length) return alert("請至少選擇一個主題");
     const picked = shuffle(pool())
@@ -174,10 +178,10 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     setSelected(null);
     setCombo(0);
     setShowCombo(false);
-    setTimeLeft(timeLimit);
+    setTimeLeft(s.timeLimit);
     setView("challengePlay");
     playClick();
-    if (bgOn) bgRef.current = playChallengeBgm();
+    if (s.soundOn) bgRef.current = playChallengeBgm();
   };
 
   const finishCh = useCallback(
@@ -307,8 +311,8 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
           </div>
           <p className="text-sm text-gray-500">題庫 {getActiveQuizBank().length} 題 · 答案隨機排列</p>
           <button type="button" onClick={() => { playClick(); setView("practiceMenu"); }} className="w-full bg-teal-500 hover:bg-teal-600 text-white text-xl font-semibold py-4 rounded-2xl btn-press card-hover">📖 常識練習</button>
-          <button type="button" onClick={() => { playClick(); setView("challengeSetup"); }} className="w-full bg-red-500 hover:bg-red-600 text-white text-xl font-semibold py-4 rounded-2xl btn-press card-hover">⚡ 挑戰模式</button>
-          <button type="button" onClick={() => { playClick(); setView("bankManage"); }} className="w-full border-2 border-teal-400 text-teal-700 font-semibold py-3 rounded-2xl btn-press">📝 題庫管理</button>
+          <button type="button" onClick={() => { playClick(); const s = loadChallengeSettings(); setBgOn(s.soundOn); setTimeLimit(s.timeLimit); setView("challengeSetup"); }} className="w-full bg-red-500 hover:bg-red-600 text-white text-xl font-semibold py-4 rounded-2xl btn-press card-hover">⚡ 挑戰模式</button>
+          <button type="button" onClick={() => { playClick(); setView("bankManage"); }} className="w-full border-2 border-teal-400 text-teal-700 font-semibold py-3 rounded-2xl btn-press">📝 題庫管理及設定</button>
           <button type="button" onClick={() => { playClick(); setView("leaderboard"); void refreshBoard(); }} className="w-full border-2 border-orange-400 text-orange-600 font-semibold py-3 rounded-2xl btn-press">🏆 龍虎榜</button>
         </div>
       </div>
@@ -404,32 +408,9 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
           </p>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="輸入名字" maxLength={20} className="w-full border-2 rounded-xl px-4 py-3 text-lg focus:border-red-400 outline-none" />
           {topicPicker("border-red-400 bg-red-50")}
-          <div className="border-2 border-gray-100 rounded-2xl p-4 space-y-3 bg-gray-50">
-            <div className="flex justify-between items-center">
-              <span className="font-medium text-gray-700">⚙️ 設定</span>
-              <button type="button" onClick={() => setShowSettings((s) => !s)} className="text-sm text-teal-600">{showSettings ? "收起" : "展開"}</button>
-            </div>
-            {showSettings && (
-              <div className="space-y-4 pt-2 border-t border-gray-200">
-                <label className="flex items-center justify-between text-sm">
-                  <span>音效與背景音樂</span>
-                  <button type="button" onClick={() => setBgOn((v) => !v)} className={`px-4 py-1.5 rounded-full font-medium ${bgOn ? "bg-green-500 text-white" : "bg-gray-300 text-gray-600"}`}>{bgOn ? "開" : "關"}</button>
-                </label>
-                <p className="text-xs text-gray-400">挑戰時會播放背景音樂 Schoolyard Quest（可在設定關閉）</p>
-                <div className="text-sm space-y-2">
-                  <div className="flex justify-between"><span>每題答題時間</span><span className="font-bold text-red-600">{timeLimit} 秒</span></div>
-                  <input type="range" min={5} max={30} step={1} value={timeLimit} onChange={(e) => setTimeLimit(parseInt(e.target.value, 10))} className="w-full" />
-                  <div className="flex justify-between text-xs text-gray-400"><span>5秒</span><span>30秒</span></div>
-                </div>
-                <button type="button" onClick={async () => {
-                  if (!confirm(cloudOn ? "確定清除雲端＋本機所有龍虎榜成績？" : "確定清除本機龍虎榜成績？")) return;
-                  const r = await clearLeaderboardAll();
-                  setBoard([]);
-                  alert(r.cloud ? "已清除雲端及本機龍虎榜" : "已清除本機龍虎榜" + (cloudOn ? "（雲端清除失敗，請檢查 Firebase 規則）" : ""));
-                }} className="w-full border border-red-300 text-red-500 text-sm font-medium py-2 rounded-xl">清除龍虎榜成績</button>
-              </div>
-            )}
-          </div>
+          <p className="text-xs text-gray-400 text-center">
+            音效、答題時間、清除龍虎榜 → 請到「題庫管理及設定」
+          </p>
           <button type="button" onClick={startChallenge} className="w-full bg-red-500 text-white text-xl font-semibold py-4 rounded-2xl btn-press">開始挑戰！</button>
         </div>
       </div>
@@ -528,7 +509,7 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
           <span>{cloudOn ? "☁️ 雲端同步（各裝置共用）" : "💾 本機儲存（各裝置獨立）"}</span>
           <button type="button" onClick={() => void refreshBoard()} className="text-teal-600 underline">重新整理</button>
         </div>
-        <p className="text-xs text-gray-400 text-center">如需清除成績，請到挑戰模式 → 設定</p>
+        <p className="text-xs text-gray-400 text-center">如需清除成績，請到「題庫管理及設定」</p>
         {boardLoading ? (
           <div className="text-center text-gray-400 py-12">載入中…</div>
         ) : board.length === 0 ? (
