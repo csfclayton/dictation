@@ -107,37 +107,98 @@ export function clearAllCustom() {
   saveCustomQuestions([]);
 }
 
-/** 批量匯入：每行 主題|題目|A|B|C|D|答案(0-3或A-D) */
+/** 解析一行 CSV（支援引號包住含逗號的欄位） */
+function splitCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      result.push(cur.trim());
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+function parseAnswer(ansRaw: string): number | null {
+  const up = ansRaw.trim().toUpperCase();
+  if (["A", "B", "C", "D"].includes(up)) return up.charCodeAt(0) - 65;
+  const n = parseInt(ansRaw.trim(), 10);
+  if (!Number.isNaN(n) && n >= 0 && n <= 3) return n;
+  return null;
+}
+
+function isHeaderRow(parts: string[]): boolean {
+  const joined = parts.join("|").toLowerCase();
+  return (
+    joined.includes("主題") ||
+    joined.includes("topic") ||
+    joined.includes("題目") ||
+    joined.includes("question") ||
+    (parts[0]?.toLowerCase() === "topic" && parts[1]?.toLowerCase().includes("question"))
+  );
+}
+
+/**
+ * 批量匯入：支援
+ * 1) 管道：主題|題目|A|B|C|D|答案
+ * 2) CSV：主題,題目,A,B,C,D,答案（可有表頭）
+ */
 export function parseImportLines(text: string): { ok: QuizQuestion[]; errors: string[] } {
   const ok: QuizQuestion[] = [];
   const errors: string[] = [];
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
   lines.forEach((line, idx) => {
     if (line.startsWith("#") || line.startsWith("//")) return;
-    const parts = line.split("|").map((p) => p.trim());
+
+    let parts: string[];
+    if (line.includes("|")) {
+      parts = line.split("|").map((p) => p.trim());
+    } else {
+      parts = splitCsvLine(line);
+    }
+
+    if (idx === 0 && isHeaderRow(parts)) return;
+
     if (parts.length < 7) {
-      errors.push(`第 ${idx + 1} 行：欄位不足（需要 7 欄，用 | 分隔）`);
+      errors.push(`第 ${idx + 1} 行：欄位不足（需要 7 欄）`);
       return;
     }
+
     const [topic, question, a, b, c, d, ansRaw] = parts;
     if (!topic || !question) {
       errors.push(`第 ${idx + 1} 行：主題或題目空白`);
       return;
     }
-    let answer = 0;
-    const up = ansRaw.toUpperCase();
-    if (["A", "B", "C", "D"].includes(up)) {
-      answer = up.charCodeAt(0) - 65;
-    } else {
-      answer = parseInt(ansRaw, 10);
-      if (Number.isNaN(answer) || answer < 0 || answer > 3) {
-        errors.push(`第 ${idx + 1} 行：答案應為 A-D 或 0-3`);
-        return;
-      }
+
+    const answer = parseAnswer(ansRaw);
+    if (answer === null) {
+      errors.push(`第 ${idx + 1} 行：答案應為 A-D 或 0-3`);
+      return;
     }
+
     ok.push({
       id: "c_" + Date.now().toString(36) + "_" + idx + Math.random().toString(36).slice(2, 5),
-      topic: topic,
+      topic,
       question,
       options: [a, b, c, d],
       answer,
