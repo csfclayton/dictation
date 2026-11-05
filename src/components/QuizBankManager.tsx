@@ -13,8 +13,11 @@ import {
   importCustomQuestions,
   exportCustomAsText,
   topicStats,
+  pullQuizBankFromCloud,
+  pushQuizBankToCloud,
   type ManagedQuestion,
 } from "@/lib/quizBankStore";
+import { FIREBASE_ENABLED } from "@/lib/firebaseConfig";
 
 const emptyForm = {
   topic: "科學",
@@ -33,11 +36,28 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
   const [importText, setImportText] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [msg, setMsg] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const cloudOn = FIREBASE_ENABLED;
 
   const refresh = () => setList(getManagedList());
 
   useEffect(() => {
-    refresh();
+    let cancelled = false;
+    (async () => {
+      setSyncing(true);
+      const r = await pullQuizBankFromCloud();
+      if (!cancelled) {
+        refresh();
+        if (r.fromCloud) {
+          setMsg(`☁️ 已從雲端載入（自訂 ${r.customCount} 題）`);
+          setTimeout(() => setMsg(""), 2500);
+        }
+        setSyncing(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -173,6 +193,12 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
           {msg && (
             <div className="text-sm text-center bg-teal-50 text-teal-700 rounded-xl py-2">{msg}</div>
           )}
+          <p className={`text-xs ${cloudOn ? "text-teal-600" : "text-gray-400"}`}>
+            {cloudOn
+              ? "☁️ 題庫會同步到 Firebase（各裝置共用）"
+              : "💾 未設定 Firebase：題庫只存本機"}
+            {syncing ? " · 同步中…" : ""}
+          </p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -189,6 +215,25 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
               批量匯入／匯出
             </button>
           </div>
+          {cloudOn && (
+            <button
+              type="button"
+              disabled={syncing}
+              onClick={async () => {
+                setSyncing(true);
+                const ok = await pushQuizBankToCloud();
+                if (ok) {
+                  flash("☁️ 已上傳到雲端");
+                } else {
+                  flash("上傳失敗，請檢查 Firestore 規則（quiz_settings）");
+                }
+                setSyncing(false);
+              }}
+              className="w-full border border-teal-300 text-teal-700 text-sm font-medium py-2 rounded-xl"
+            >
+              ☁️ 立即同步到雲端
+            </button>
+          )}
         </div>
 
         {showForm && (
@@ -241,18 +286,10 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
             ))}
             <p className="text-xs text-gray-400">點選左邊圓點 = 正確答案</p>
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={saveForm}
-                className="flex-1 bg-teal-500 text-white font-semibold py-2.5 rounded-xl"
-              >
+              <button type="button" onClick={saveForm} className="flex-1 bg-teal-500 text-white font-semibold py-2.5 rounded-xl">
                 儲存
               </button>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="flex-1 bg-gray-200 font-semibold py-2.5 rounded-xl"
-              >
+              <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-gray-200 font-semibold py-2.5 rounded-xl">
                 取消
               </button>
             </div>
@@ -263,16 +300,7 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
           <div className="bg-white rounded-3xl shadow-xl p-5 space-y-3 anim-slide-up">
             <h3 className="font-bold text-gray-800">批量匯入／匯出</h3>
             <p className="text-xs text-gray-500 leading-relaxed">
-              支援 <b>CSV</b> 或用 <code className="bg-gray-100 px-1">|</code> 分隔。每行一題，7 欄：
-              <br />
-              <code className="text-[11px] bg-gray-50 block p-2 rounded-lg mt-1 break-all">
-                主題,題目,選項A,選項B,選項C,選項D,正確答案
-              </code>
-              正確答案：A–D 或 0–3。可有表頭列。例：
-              <br />
-              <code className="text-[11px] bg-gray-50 block p-2 rounded-lg mt-1 break-all">
-                科學,地球繞什麼轉？,太陽,月球,火星,金星,A
-              </code>
+              支援 <b>CSV</b> 或用 <code className="bg-gray-100 px-1">|</code> 分隔。每行一題，7 欄。
             </p>
             <div className="space-y-2">
               <label className="block">
@@ -295,30 +323,19 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
                   }}
                 />
               </label>
-              <p className="text-xs text-gray-400">
-                Excel：另存為「CSV UTF-8（逗號分隔）」再上載。Google 試算表：檔案 → 下載 → CSV。
-              </p>
             </div>
             <textarea
               value={importText}
               onChange={(e) => setImportText(e.target.value)}
               rows={6}
               className="w-full border-2 rounded-xl px-3 py-2 text-sm font-mono"
-              placeholder="貼上 CSV / 管道格式，或先上載檔案…"
+              placeholder="貼上 CSV / 或先上載檔案…"
             />
             <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={doImport}
-                className="bg-teal-500 text-white font-semibold py-2.5 rounded-xl"
-              >
+              <button type="button" onClick={doImport} className="bg-teal-500 text-white font-semibold py-2.5 rounded-xl">
                 匯入為自訂題
               </button>
-              <button
-                type="button"
-                onClick={doExport}
-                className="border-2 border-orange-400 text-orange-600 font-semibold py-2.5 rounded-xl"
-              >
+              <button type="button" onClick={doExport} className="border-2 border-orange-400 text-orange-600 font-semibold py-2.5 rounded-xl">
                 匯出為文字
               </button>
             </div>
@@ -342,16 +359,10 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
 
         <div className="bg-white rounded-3xl shadow-xl p-5 space-y-3">
           <div className="flex gap-2">
-            <select
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              className="border-2 rounded-xl px-2 py-2 text-sm"
-            >
+            <select value={topic} onChange={(e) => setTopic(e.target.value)} className="border-2 rounded-xl px-2 py-2 text-sm">
               <option value="全部">全部主題</option>
               {ALL_TOPICS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
+                <option key={t} value={t}>{t}</option>
               ))}
             </select>
             <input
@@ -392,28 +403,16 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="flex gap-2 mt-2">
                   {!item.builtin && (
-                    <button
-                      type="button"
-                      onClick={() => openEdit(item)}
-                      className="text-xs text-teal-600 underline"
-                    >
+                    <button type="button" onClick={() => openEdit(item)} className="text-xs text-teal-600 underline">
                       編輯
                     </button>
                   )}
                   {item.disabled ? (
-                    <button
-                      type="button"
-                      onClick={() => restore(item)}
-                      className="text-xs text-green-600 underline"
-                    >
+                    <button type="button" onClick={() => restore(item)} className="text-xs text-green-600 underline">
                       重新啟用
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => remove(item)}
-                      className="text-xs text-red-500 underline"
-                    >
+                    <button type="button" onClick={() => remove(item)} className="text-xs text-red-500 underline">
                       {item.builtin ? "停用" : "刪除"}
                     </button>
                   )}
