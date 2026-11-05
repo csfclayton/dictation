@@ -40,7 +40,7 @@ const defaultGroups: WordGroup[] = [
 
 const STORAGE_KEY = "dictation_groups_v2";
 
-type Mode = "menu" | "manage" | "select" | "ocr" | "practice" | "quiz";
+type Mode = "menu" | "dictationHub" | "manage" | "select" | "ocr" | "practice" | "quiz";
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -258,7 +258,9 @@ export default function Home() {
           }
         },
       });
-      const { data: { text } } = await worker.recognize(file);
+      const {
+        data: { text },
+      } = await worker.recognize(file);
       await worker.terminate();
       const cleaned = text.replace(/\n{3,}/g, "\n\n").replace(/[ \t]+/g, " ").trim();
       setOcrText(cleaned || "未能識別到文字，請試下再影清晰啲。");
@@ -300,14 +302,55 @@ export default function Home() {
 
   if (mode === "menu") {
     return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-amber-50 to-orange-50">
+        <div className="max-w-md w-full text-center space-y-8">
+          <div>
+            <h1 className="text-4xl font-bold text-orange-600 tracking-tight">小天才學習app</h1>
+            <p className="text-gray-500 mt-2 text-sm">香港小學 · 繁體中文 · 廣東話</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => setMode("dictationHub")}
+              className="aspect-square bg-white rounded-3xl shadow-lg border-2 border-orange-100 hover:border-orange-400 hover:shadow-xl transition flex flex-col items-center justify-center gap-3 p-4 active:scale-95"
+            >
+              <span className="text-5xl">✏️</span>
+              <span className="text-lg font-bold text-orange-600">默書練習</span>
+            </button>
+            <button
+              onClick={() => setMode("quiz")}
+              className="aspect-square bg-white rounded-3xl shadow-lg border-2 border-teal-100 hover:border-teal-400 hover:shadow-xl transition flex flex-col items-center justify-center gap-3 p-4 active:scale-95"
+            >
+              <span className="text-5xl">🧠</span>
+              <span className="text-lg font-bold text-teal-600">常識問答</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "dictationHub") {
+    return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-amber-50">
         <div className="bg-white rounded-3xl shadow-xl p-8 max-w-md w-full text-center space-y-4">
-          <h1 className="text-3xl font-bold text-orange-600">香港小學默書練習</h1>
-          <p className="text-gray-500 mb-2">廣東話 · 繁體中文</p>
-          <button onClick={() => setMode("select")} className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xl font-semibold py-4 rounded-2xl">開始默書練習</button>
-          <button onClick={() => setMode("manage")} className="w-full bg-purple-500 hover:bg-purple-600 text-white text-xl font-semibold py-4 rounded-2xl">📚 詞庫管理</button>
-          <button onClick={() => { setMode("ocr"); setOcrStatus("idle"); setOcrText(""); }} className="w-full bg-blue-500 hover:bg-blue-600 text-white text-xl font-semibold py-4 rounded-2xl">📸 影相匯入課文</button>
-          <button onClick={() => setMode("quiz")} className="w-full bg-teal-500 hover:bg-teal-600 text-white text-xl font-semibold py-4 rounded-2xl">🧠 常識問答測驗（小四至小五）</button>
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-orange-600">✏️ 默書練習</h2>
+            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">
+              ← 主頁
+            </button>
+          </div>
+          <button
+            onClick={() => setMode("select")}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xl font-semibold py-4 rounded-2xl"
+          >
+            開始默書
+          </button>
+          <button
+            onClick={() => setMode("manage")}
+            className="w-full bg-purple-500 hover:bg-purple-600 text-white text-xl font-semibold py-4 rounded-2xl"
+          >
+            📚 詞庫管理
+          </button>
         </div>
       </div>
     );
@@ -323,13 +366,27 @@ export default function Home() {
         <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-5">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-orange-600">選擇默書詞庫</h2>
-            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">← 返回</button>
+            <button onClick={() => setMode("dictationHub")} className="text-gray-500 text-sm">
+              ← 返回
+            </button>
           </div>
           <p className="text-sm text-gray-600">可同時選擇多個詞庫一齊練習</p>
           <div className="space-y-2 max-h-80 overflow-y-auto">
             {groups.map((g) => (
-              <label key={g.id} className={`flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer ${selectedGroupIds.includes(g.id) ? "border-orange-400 bg-orange-50" : "border-gray-200"}`}>
-                <input type="checkbox" checked={selectedGroupIds.includes(g.id)} onChange={() => toggleSelectGroup(g.id)} className="w-5 h-5" />
+              <label
+                key={g.id}
+                className={`flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer ${
+                  selectedGroupIds.includes(g.id)
+                    ? "border-orange-400 bg-orange-50"
+                    : "border-gray-200"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedGroupIds.includes(g.id)}
+                  onChange={() => toggleSelectGroup(g.id)}
+                  className="w-5 h-5"
+                />
                 <div className="flex-1 text-left">
                   <div className="font-medium text-lg">{g.name}</div>
                   <div className="text-sm text-gray-500">{g.words.length} 個詞語</div>
@@ -337,7 +394,12 @@ export default function Home() {
               </label>
             ))}
           </div>
-          <button onClick={startSelectedPractice} className="w-full bg-orange-500 hover:bg-orange-600 text-white text-lg font-semibold py-4 rounded-2xl">開始練習 →</button>
+          <button
+            onClick={startSelectedPractice}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white text-lg font-semibold py-4 rounded-2xl"
+          >
+            開始練習 →
+          </button>
         </div>
       </div>
     );
@@ -349,30 +411,74 @@ export default function Home() {
         <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-5 space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-orange-600">詞庫管理</h2>
-            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">← 返回</button>
+            <button onClick={() => setMode("dictationHub")} className="text-gray-500 text-sm">
+              ← 返回
+            </button>
           </div>
-          {message && <div className="bg-green-100 text-green-700 text-center py-2 rounded-xl text-sm">{message}</div>}
+          {message && (
+            <div className="bg-green-100 text-green-700 text-center py-2 rounded-xl text-sm">{message}</div>
+          )}
+          <button
+            onClick={() => {
+              setMode("ocr");
+              setOcrStatus("idle");
+              setOcrText("");
+            }}
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-2xl"
+          >
+            📸 影相匯入課文
+          </button>
           <div className="flex gap-2 overflow-x-auto pb-2">
             {groups.map((g) => (
-              <button key={g.id} onClick={() => { setActiveGroupId(g.id); setEditingGroupId(null); }}
-                className={`px-4 py-2 rounded-full text-sm whitespace-nowrap ${activeGroupId === g.id ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-700"}`}>
+              <button
+                key={g.id}
+                onClick={() => {
+                  setActiveGroupId(g.id);
+                  setEditingGroupId(null);
+                }}
+                className={`px-4 py-2 rounded-full text-sm whitespace-nowrap ${
+                  activeGroupId === g.id ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-700"
+                }`}
+              >
                 {g.name} ({g.words.length})
               </button>
             ))}
           </div>
           <div className="flex gap-2">
-            <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && createGroup()}
-              placeholder="輸入新詞庫名稱" className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400" />
-            <button onClick={createGroup} className="bg-green-500 hover:bg-green-600 text-white px-4 rounded-xl font-medium">新增詞庫</button>
+            <input
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && createGroup()}
+              placeholder="輸入新詞庫名稱"
+              className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
+            />
+            <button
+              onClick={createGroup}
+              className="bg-green-500 hover:bg-green-600 text-white px-4 rounded-xl font-medium"
+            >
+              新增詞庫
+            </button>
           </div>
           <div className="bg-orange-50 rounded-2xl p-4 space-y-3">
             <div className="flex justify-between items-center gap-2">
               {editingGroupId === activeGroup.id ? (
                 <div className="flex gap-2 flex-1 items-center">
-                  <input value={editGroupName} onChange={(e) => setEditGroupName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && renameGroup(activeGroup.id)}
-                    className="flex-1 border rounded-lg px-2 py-1" autoFocus />
-                  <button onClick={() => renameGroup(activeGroup.id)} className="text-green-600 text-sm font-medium">儲存</button>
-                  <button onClick={() => setEditingGroupId(null)} className="text-gray-500 text-sm">取消</button>
+                  <input
+                    value={editGroupName}
+                    onChange={(e) => setEditGroupName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && renameGroup(activeGroup.id)}
+                    className="flex-1 border rounded-lg px-2 py-1"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => renameGroup(activeGroup.id)}
+                    className="text-green-600 text-sm font-medium"
+                  >
+                    儲存
+                  </button>
+                  <button onClick={() => setEditingGroupId(null)} className="text-gray-500 text-sm">
+                    取消
+                  </button>
                 </div>
               ) : (
                 <>
@@ -381,18 +487,43 @@ export default function Home() {
                     <div className="font-bold text-lg">{activeGroup.name}</div>
                   </div>
                   <div className="flex gap-3 text-sm">
-                    <button onClick={() => { setEditingGroupId(activeGroup.id); setEditGroupName(activeGroup.name); }} className="text-blue-600">重新命名</button>
-                    <button onClick={() => deleteGroup(activeGroup.id)} className="text-red-500">刪除</button>
+                    <button
+                      onClick={() => {
+                        setEditingGroupId(activeGroup.id);
+                        setEditGroupName(activeGroup.name);
+                      }}
+                      className="text-blue-600"
+                    >
+                      重新命名
+                    </button>
+                    <button onClick={() => deleteGroup(activeGroup.id)} className="text-red-500">
+                      刪除
+                    </button>
                   </div>
                 </>
               )}
             </div>
             <div className="space-y-2 pt-2 border-t border-orange-100">
-              <input value={newText} onChange={(e) => setNewText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWordToActive()}
-                placeholder="中文詞語（必填）" className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400" />
-              <input value={newJyutping} onChange={(e) => setNewJyutping(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWordToActive()}
-                placeholder="粵拼（可選）" className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400" />
-              <button onClick={addWordToActive} className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 rounded-xl">＋ 加入「{activeGroup.name}」</button>
+              <input
+                value={newText}
+                onChange={(e) => setNewText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addWordToActive()}
+                placeholder="中文詞語（必填）"
+                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
+              />
+              <input
+                value={newJyutping}
+                onChange={(e) => setNewJyutping(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addWordToActive()}
+                placeholder="粵拼（可選）"
+                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-400"
+              />
+              <button
+                onClick={addWordToActive}
+                className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 rounded-xl"
+              >
+                ＋ 加入「{activeGroup.name}」
+              </button>
             </div>
           </div>
           <div className="max-h-72 overflow-y-auto space-y-2">
@@ -400,12 +531,17 @@ export default function Home() {
               <div className="text-center text-gray-400 py-8">呢個詞庫仲係空嘅</div>
             ) : (
               activeGroup.words.map((w, i) => (
-                <div key={`${activeGroup.id}-${i}-${w.text}`} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
+                <div
+                  key={`${activeGroup.id}-${i}-${w.text}`}
+                  className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3"
+                >
                   <div>
                     <div className="font-medium">{w.text}</div>
                     {w.jyutping && <div className="text-sm text-gray-500">{w.jyutping}</div>}
                   </div>
-                  <button onClick={() => deleteWord(i)} className="text-red-500 text-sm px-2 py-1">刪除</button>
+                  <button onClick={() => deleteWord(i)} className="text-red-500 text-sm px-2 py-1">
+                    刪除
+                  </button>
                 </div>
               ))
             )}
@@ -421,23 +557,48 @@ export default function Home() {
         <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-5">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-orange-600">影相匯入課文</h2>
-            <button onClick={() => setMode("menu")} className="text-gray-500 text-sm">← 返回</button>
+            <button onClick={() => setMode("manage")} className="text-gray-500 text-sm">
+              ← 返回
+            </button>
           </div>
-          <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={onFileChange} className="hidden" />
-          <button onClick={() => fileInputRef.current?.click()} disabled={ocrStatus === "loading"}
-            className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white text-lg font-semibold py-4 rounded-2xl">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={onFileChange}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={ocrStatus === "loading"}
+            className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white text-lg font-semibold py-4 rounded-2xl"
+          >
             {ocrStatus === "loading" ? `識別中... ${ocrProgress}%` : "📷 影相 / 選擇相片"}
           </button>
           {ocrStatus === "loading" && (
             <div className="w-full bg-gray-200 rounded-full h-3">
-              <div className="bg-blue-500 h-3 rounded-full transition-all" style={{ width: `${ocrProgress}%` }} />
+              <div
+                className="bg-blue-500 h-3 rounded-full transition-all"
+                style={{ width: `${ocrProgress}%` }}
+              />
             </div>
           )}
           {(ocrStatus === "done" || ocrStatus === "error") && (
             <>
-              <textarea value={ocrText} onChange={(e) => setOcrText(e.target.value)} rows={10}
-                className="w-full border-2 border-orange-200 rounded-xl p-3 text-lg focus:border-orange-400 outline-none" placeholder="識別結果（可修改）" />
-              <button onClick={startFromOcr} className="w-full bg-green-500 hover:bg-green-600 text-white text-lg font-semibold py-4 rounded-2xl">開始默寫呢段文字 →</button>
+              <textarea
+                value={ocrText}
+                onChange={(e) => setOcrText(e.target.value)}
+                rows={10}
+                className="w-full border-2 border-orange-200 rounded-xl p-3 text-lg focus:border-orange-400 outline-none"
+                placeholder="識別結果（可修改）"
+              />
+              <button
+                onClick={startFromOcr}
+                className="w-full bg-green-500 hover:bg-green-600 text-white text-lg font-semibold py-4 rounded-2xl"
+              >
+                開始默寫呢段文字 →
+              </button>
             </>
           )}
           <p className="text-xs text-gray-400">提示：影相時盡量影清晰、光線充足、字體正。</p>
@@ -451,31 +612,81 @@ export default function Home() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-amber-50">
       <div className="bg-white rounded-3xl shadow-xl p-6 max-w-md w-full text-center space-y-4">
         <div className="flex justify-between items-center">
-          <button onClick={() => { stopAudio(); setMode("menu"); }} className="text-gray-500 text-sm">← 返回</button>
-          <div className="text-sm text-gray-600">{currentIndex + 1} / {practiceList.length}　分數 {score}</div>
+          <button
+            onClick={() => {
+              stopAudio();
+              setMode("dictationHub");
+            }}
+            className="text-gray-500 text-sm"
+          >
+            ← 返回
+          </button>
+          <div className="text-sm text-gray-600">
+            {currentIndex + 1} / {practiceList.length}　分數 {score}
+          </div>
         </div>
         <div className="flex items-center gap-3 text-sm">
           <span className="text-gray-500 whitespace-nowrap">語速</span>
-          <input type="range" min="0.6" max="1.2" step="0.05" value={speechRate} onChange={(e) => setSpeechRate(parseFloat(e.target.value))} className="flex-1" />
+          <input
+            type="range"
+            min="0.6"
+            max="1.2"
+            step="0.05"
+            value={speechRate}
+            onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+            className="flex-1"
+          />
           <span className="w-10 text-right">{speechRate.toFixed(2)}</span>
         </div>
-        <button onClick={togglePlayPause} className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xl font-semibold py-4 rounded-2xl">
+        <button
+          onClick={togglePlayPause}
+          className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xl font-semibold py-4 rounded-2xl"
+        >
           {isPlaying ? "⏸ 暫停（空白鍵）" : "▶️ 播放（空白鍵）"}
         </button>
-        <textarea value={input} onChange={(e) => setInput(e.target.value)} rows={item && item.text.length > 20 ? 4 : 2}
-          className="w-full text-2xl border-4 border-orange-200 focus:border-orange-400 rounded-2xl px-4 py-3 text-center outline-none" placeholder="喺度輸入答案" autoFocus />
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          rows={item && item.text.length > 20 ? 4 : 2}
+          className="w-full text-2xl border-4 border-orange-200 focus:border-orange-400 rounded-2xl px-4 py-3 text-center outline-none"
+          placeholder="喺度輸入答案"
+          autoFocus
+        />
         <div className="flex gap-2">
-          <button onClick={prevItem} className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-2xl">← 上一句</button>
-          <button onClick={checkAnswer} className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-2xl">檢查 ✅</button>
-          <button onClick={nextItem} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-2xl">下一句 →</button>
+          <button
+            onClick={prevItem}
+            className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-2xl"
+          >
+            ← 上一句
+          </button>
+          <button
+            onClick={checkAnswer}
+            className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-2xl"
+          >
+            檢查 ✅
+          </button>
+          <button
+            onClick={nextItem}
+            className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-2xl"
+          >
+            下一句 →
+          </button>
         </div>
         {result && item && (
-          <div className={`text-xl font-bold p-4 rounded-2xl ${result === "correct" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-            {result === "correct" ? "正確！👍" : (
+          <div
+            className={`text-xl font-bold p-4 rounded-2xl ${
+              result === "correct" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+            }`}
+          >
+            {result === "correct" ? (
+              "正確！👍"
+            ) : (
               <>
                 <div>正確答案：</div>
                 <div className="mt-1 text-lg break-words">{item.text}</div>
-                {item.jyutping && <div className="text-sm mt-1 text-gray-600">粵拼：{item.jyutping}</div>}
+                {item.jyutping && (
+                  <div className="text-sm mt-1 text-gray-600">粵拼：{item.jyutping}</div>
+                )}
               </>
             )}
           </div>
