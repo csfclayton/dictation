@@ -15,6 +15,9 @@ import {
   topicStats,
   pullQuizBankFromCloud,
   pushQuizBankToCloud,
+  listCustomBatches,
+  deleteByBatchId,
+  deleteLegacyCustom,
   type ManagedQuestion,
 } from "@/lib/quizBankStore";
 import { FIREBASE_ENABLED } from "@/lib/firebaseConfig";
@@ -41,8 +44,16 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin] = useState("");
   const [pinErr, setPinErr] = useState("");
+  const [kindFilter, setKindFilter] = useState<"all" | "custom" | "builtin" | string>("all");
+  const [batches, setBatches] = useState<
+    { batchId: string; batchLabel: string; count: number; importedAt: number }[]
+  >([]);
+  const [showBatches, setShowBatches] = useState(false);
 
-  const refresh = () => setList(getManagedList());
+  const refresh = () => {
+    setList(getManagedList());
+    setBatches(listCustomBatches());
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -67,13 +78,21 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
     const kw = q.trim().toLowerCase();
     return list.filter((item) => {
       if (topic !== "全部" && item.topic !== topic) return false;
+      if (kindFilter === "custom" && item.builtin) return false;
+      if (kindFilter === "builtin" && !item.builtin) return false;
+      if (kindFilter.startsWith("batch:")) {
+        const bid = kindFilter.slice(6);
+        if (item.builtin) return false;
+        const itemBid = item.batchId || "legacy";
+        if (itemBid !== bid) return false;
+      }
       if (!kw) return true;
       return (
         item.question.toLowerCase().includes(kw) ||
         item.options.some((o) => o.toLowerCase().includes(kw))
       );
     });
-  }, [list, topic, q]);
+  }, [list, topic, q, kindFilter]);
 
   const stats = useMemo(() => topicStats(list), [list]);
   const activeCount = list.filter((x) => !x.disabled).length;
@@ -154,8 +173,8 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
       flash(errors[0] + (errors.length > 1 ? `（另有 ${errors.length - 1} 個錯誤）` : ""));
     }
     if (ok.length) {
-      importCustomQuestions(ok);
-      flash(`成功匯入 ${ok.length} 題`);
+      const r = importCustomQuestions(ok);
+      flash(`成功匯入 ${r.count} 題（${r.batchLabel}）`);
       setImportText("");
       setShowImport(false);
       refresh();
@@ -271,7 +290,7 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
           </div>
           <p className="text-xs text-gray-500">
             生效題目 <b className="text-teal-700">{activeCount}</b>　自訂{" "}
-            <b className="text-orange-600">{customCount}</b>　內建可停用、自訂可刪改
+            <b className="text-orange-600">{customCount}</b>
           </p>
           <div className="flex flex-wrap gap-1.5 text-xs">
             {Object.entries(stats).map(([t, s]) => (
@@ -290,11 +309,7 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
             {syncing ? " · 同步中…" : ""}
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={openAdd}
-              className="bg-teal-500 text-white font-semibold py-2.5 rounded-xl btn-press"
-            >
+            <button type="button" onClick={openAdd} className="bg-teal-500 text-white font-semibold py-2.5 rounded-xl btn-press">
               ＋ 新增題目
             </button>
             <button
@@ -312,17 +327,95 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
               onClick={async () => {
                 setSyncing(true);
                 const ok = await pushQuizBankToCloud();
-                if (ok) {
-                  flash("☁️ 已上傳到雲端");
-                } else {
-                  flash("上傳失敗，請檢查 Firestore 規則（quiz_settings）");
-                }
+                flash(ok ? "☁️ 已上傳到雲端" : "上傳失敗，請檢查 Firestore 規則（quiz_settings）");
                 setSyncing(false);
               }}
               className="w-full border border-teal-300 text-teal-700 text-sm font-medium py-2 rounded-xl"
             >
               ☁️ 立即同步到雲端
             </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowBatches((v) => !v)}
+            className="w-full border border-gray-300 text-gray-700 text-sm font-medium py-2 rounded-xl"
+          >
+            🗂 按批次／性質管理刪除 {showBatches ? "▲" : "▼"}
+          </button>
+          {showBatches && (
+            <div className="border border-gray-100 rounded-xl p-3 space-y-2 bg-gray-50 text-sm">
+              <p className="text-xs text-gray-500">
+                可篩選列表，或一次刪除整個匯入批次。內建題只能「停用」。
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    ["all", "全部", "teal"],
+                    ["custom", "只看自訂", "orange"],
+                    ["builtin", "只看內建", "gray"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setKindFilter(k)}
+                    className={`px-2 py-1 rounded-full text-xs border ${
+                      kindFilter === k
+                        ? k === "custom"
+                          ? "bg-orange-500 text-white border-orange-500"
+                          : k === "builtin"
+                            ? "bg-gray-600 text-white border-gray-600"
+                            : "bg-teal-500 text-white border-teal-500"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {batches.length === 0 ? (
+                <p className="text-xs text-gray-400">未有自訂批次</p>
+              ) : (
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {batches.map((b) => (
+                    <div
+                      key={b.batchId}
+                      className="flex items-center gap-2 bg-white rounded-lg p-2 border border-gray-100"
+                    >
+                      <button
+                        type="button"
+                        className="flex-1 text-left min-w-0"
+                        onClick={() => setKindFilter("batch:" + b.batchId)}
+                      >
+                        <div className="font-medium text-gray-800 truncate text-xs">{b.batchLabel}</div>
+                        <div className="text-[10px] text-gray-400">
+                          {b.count} 題
+                          {b.importedAt
+                            ? " · " + new Date(b.importedAt).toLocaleString("zh-HK")
+                            : ""}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs text-red-500 shrink-0 px-2"
+                        onClick={() => {
+                          if (!confirm(`確定刪除批次「${b.batchLabel}」共 ${b.count} 題？`)) return;
+                          const n =
+                            b.batchId === "legacy"
+                              ? deleteLegacyCustom()
+                              : deleteByBatchId(b.batchId);
+                          refresh();
+                          setKindFilter("all");
+                          flash(`已刪除 ${n} 題`);
+                        }}
+                      >
+                        刪除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -337,9 +430,7 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
                 className="mt-1 w-full border-2 rounded-xl px-3 py-2"
               >
                 {ALL_TOPICS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
+                  <option key={t} value={t}>{t}</option>
                 ))}
               </select>
             </label>
@@ -374,14 +465,9 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
                 />
               </label>
             ))}
-            <p className="text-xs text-gray-400">點選左邊圓點 = 正確答案</p>
             <div className="flex gap-2">
-              <button type="button" onClick={saveForm} className="flex-1 bg-teal-500 text-white font-semibold py-2.5 rounded-xl">
-                儲存
-              </button>
-              <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-gray-200 font-semibold py-2.5 rounded-xl">
-                取消
-              </button>
+              <button type="button" onClick={saveForm} className="flex-1 bg-teal-500 text-white font-semibold py-2.5 rounded-xl">儲存</button>
+              <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-gray-200 font-semibold py-2.5 rounded-xl">取消</button>
             </div>
           </div>
         )}
@@ -389,45 +475,33 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
         {showImport && (
           <div className="bg-white rounded-3xl shadow-xl p-5 space-y-3 anim-slide-up">
             <h3 className="font-bold text-gray-800">批量匯入／匯出</h3>
-            <p className="text-xs text-gray-500 leading-relaxed">
-              支援 <b>CSV</b>。匯出會下載檔案；只有<strong>自訂題</strong>會被匯出。
-            </p>
-            <div className="space-y-2">
-              <label className="block">
-                <span className="text-sm text-gray-600">上載 CSV 檔案</span>
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  className="mt-1 block w-full text-sm"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    try {
-                      const text = await file.text();
-                      setImportText(text);
-                      flash(`已讀取「${file.name}」，請按匯入`);
-                    } catch {
-                      flash("讀取檔案失敗");
-                    }
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </div>
+            <p className="text-xs text-gray-500">每次匯入會成一個批次，之後可成批刪除。</p>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="block w-full text-sm"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  setImportText(await file.text());
+                  flash(`已讀取「${file.name}」，請按匯入`);
+                } catch {
+                  flash("讀取檔案失敗");
+                }
+                e.target.value = "";
+              }}
+            />
             <textarea
               value={importText}
               onChange={(e) => setImportText(e.target.value)}
               rows={6}
               className="w-full border-2 rounded-xl px-3 py-2 text-sm font-mono"
-              placeholder="貼上 CSV / 或先上載檔案…"
+              placeholder="貼上 CSV…"
             />
             <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={doImport} className="bg-teal-500 text-white font-semibold py-2.5 rounded-xl">
-                匯入為自訂題
-              </button>
-              <button type="button" onClick={() => void doExport()} className="border-2 border-orange-400 text-orange-600 font-semibold py-2.5 rounded-xl">
-                匯出 CSV
-              </button>
+              <button type="button" onClick={doImport} className="bg-teal-500 text-white font-semibold py-2.5 rounded-xl">匯入為自訂題</button>
+              <button type="button" onClick={() => void doExport()} className="border-2 border-orange-400 text-orange-600 font-semibold py-2.5 rounded-xl">匯出 CSV</button>
             </div>
             {customCount > 0 && (
               <button
@@ -458,7 +532,7 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="搜尋題目／選項…"
+              placeholder="搜尋…"
               className="flex-1 border-2 rounded-xl px-3 py-2 text-sm"
             />
           </div>
@@ -477,9 +551,15 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
               >
                 <div className="flex justify-between gap-2 text-xs mb-1">
                   <span className="text-teal-600 font-medium">{item.topic}</span>
-                  <span className="text-gray-400">
+                  <span className="text-gray-400 text-right">
                     {item.builtin ? "內建" : "自訂"}
                     {item.disabled ? " · 已停用" : ""}
+                    {!item.builtin && item.batchLabel ? (
+                      <>
+                        <br />
+                        <span className="text-[10px]">{item.batchLabel}</span>
+                      </>
+                    ) : null}
                   </span>
                 </div>
                 <div className="text-sm font-medium text-gray-800 mb-1">{item.question}</div>
@@ -493,14 +573,10 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="flex gap-2 mt-2">
                   {!item.builtin && (
-                    <button type="button" onClick={() => openEdit(item)} className="text-xs text-teal-600 underline">
-                      編輯
-                    </button>
+                    <button type="button" onClick={() => openEdit(item)} className="text-xs text-teal-600 underline">編輯</button>
                   )}
                   {item.disabled ? (
-                    <button type="button" onClick={() => restore(item)} className="text-xs text-green-600 underline">
-                      重新啟用
-                    </button>
+                    <button type="button" onClick={() => restore(item)} className="text-xs text-green-600 underline">重新啟用</button>
                   ) : (
                     <button type="button" onClick={() => remove(item)} className="text-xs text-red-500 underline">
                       {item.builtin ? "停用" : "刪除"}
