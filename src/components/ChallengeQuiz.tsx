@@ -53,6 +53,8 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   const [showSettings, setShowSettings] = useState(false);
   const [scorePopup, setScorePopup] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [combo, setCombo] = useState(0);
+  const [showCombo, setShowCombo] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bgRef = useRef<{ stop: () => void } | null>(null);
 
@@ -124,6 +126,8 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     setWrongs([]);
     setAnswered(false);
     setSelected(null);
+    setCombo(0);
+    setShowCombo(false);
     setTimeLeft(timeLimit);
     setView("challengePlay");
     playClick();
@@ -175,8 +179,17 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
         playCorrect();
         setScorePopup(gained);
         setTimeout(() => setScorePopup(0), 1000);
+        setCombo((c) => {
+          const next = c + 1;
+          if (next >= 2) {
+            setShowCombo(true);
+            setTimeout(() => setShowCombo(false), 900);
+          }
+          return next;
+        });
       } else {
         playWrong();
+        setCombo(0);
         nw = [
           ...w,
           {
@@ -261,7 +274,7 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
             <button onClick={() => setView("menu")} className="text-gray-500 text-sm">← 返回</button>
           </div>
           {topicPicker("border-teal-500 bg-teal-50 text-teal-800")}
-          <button type="button" onClick={() => startPractice(5)} className="w-full bg-teal-500 text-white font-semibold py-3 rounded-2xl btn-press">5 題練習</button>
+          <button type="button" onClick={() => startPractice(5)} className="w-full bg-teal-500 text-white font-semibold py-3 rounded-2xl btn-press card-hover">5 題練習</button>
           <button type="button" onClick={() => startPractice(10)} className="w-full bg-teal-600 text-white font-semibold py-3 rounded-2xl btn-press">10 題練習</button>
           <button type="button" onClick={() => startPractice(20)} className="w-full bg-teal-700 text-white font-semibold py-3 rounded-2xl btn-press">20 題練習</button>
           <button type="button" onClick={() => startPractice(9999)} className="w-full border-2 border-teal-500 text-teal-700 font-semibold py-3 rounded-2xl btn-press">所選主題全部</button>
@@ -346,9 +359,10 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
             {showSettings && (
               <div className="space-y-4 pt-2 border-t border-gray-200">
                 <label className="flex items-center justify-between text-sm">
-                  <span>音效</span>
+                  <span>音效與背景音樂</span>
                   <button type="button" onClick={() => setBgOn((v) => !v)} className={`px-4 py-1.5 rounded-full font-medium ${bgOn ? "bg-green-500 text-white" : "bg-gray-300 text-gray-600"}`}>{bgOn ? "開" : "關"}</button>
                 </label>
+                <p className="text-xs text-gray-400">挑戰時會播放輕柔背景音樂</p>
                 <div className="text-sm space-y-2">
                   <div className="flex justify-between"><span>每題答題時間</span><span className="font-bold text-red-600">{timeLimit} 秒</span></div>
                   <input type="range" min={5} max={30} step={1} value={timeLimit} onChange={(e) => setTimeLimit(parseInt(e.target.value, 10))} className="w-full" />
@@ -371,8 +385,21 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     return (
       <div className={`min-h-screen p-4 transition-colors duration-300 ${urgent ? "bg-red-100" : "bg-amber-50"}`}>
         <ScorePopup points={scorePopup} show={scorePopup > 0} />
-        <div key={index} className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-4 anim-slide-up">
-          <div className="flex justify-between text-sm"><span>{name}</span><span className="font-bold text-orange-600">{cScore.toFixed(1)} 分</span></div>
+        <div key={index} className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-4 anim-slide-up relative">
+          {bgOn && (
+            <div className="absolute top-3 right-3 text-xs text-teal-500 anim-soft-pulse">♪ 音樂中</div>
+          )}
+          <div className="flex justify-between text-sm items-center pr-14">
+            <span>{name}</span>
+            <div className="flex items-center gap-2">
+              {combo >= 2 && (
+                <span className={`text-xs font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full ${showCombo ? "anim-combo" : "anim-streak"}`}>
+                  🔥 {combo} 連擊
+                </span>
+              )}
+              <span className="font-bold text-orange-600 anim-soft-pulse">{cScore.toFixed(1)} 分</span>
+            </div>
+          </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-500">{index + 1}/{list.length}</span>
             <span className={`text-3xl font-bold tabular-nums ${urgent ? "text-red-600 timer-urgent" : "text-teal-600"}`}>{timeLeft}s</span>
@@ -439,13 +466,16 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
           <h2 className="text-2xl font-bold text-orange-600">🏆 龍虎榜</h2>
           <button onClick={() => setView("menu")} className="text-sm text-gray-500">← 返回</button>
         </div>
+        <p className="text-xs text-gray-400 text-center">如需清除成績，請到挑戰模式 → 設定</p>
         {board.length === 0 ? (
           <div className="text-center text-gray-400 py-12">暫無紀錄</div>
         ) : (
           <div className="space-y-2 max-h-[70vh] overflow-y-auto">
             {board.map((e, i) => (
               <div key={e.id} className={`flex gap-3 p-3 rounded-xl ${i === 0 ? "bg-yellow-50 border-2 border-yellow-300 anim-float" : "bg-gray-50 anim-slide-up"}`}>
-                <div className={`w-8 text-center font-bold ${i < 3 ? "text-orange-500" : "text-gray-400"}`}>{i + 1}</div>
+                <div className={`w-8 text-center font-bold text-lg ${i === 0 ? "anim-medal" : i < 3 ? "text-orange-500" : "text-gray-400"}`}>
+                  {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold truncate">{e.name}</div>
                   <div className="text-xs text-gray-500 truncate">{e.topics} · {e.date} {e.time}</div>
@@ -458,7 +488,6 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
             ))}
           </div>
         )}
-        <button type="button" onClick={() => { if (confirm("清除龍虎榜？")) { localStorage.removeItem(LEADERBOARD_KEY); setBoard([]); } }} className="w-full text-red-400 text-sm">清除龍虎榜</button>
       </div>
     </div>
   );
