@@ -38,6 +38,9 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
   const [msg, setMsg] = useState("");
   const [syncing, setSyncing] = useState(false);
   const cloudOn = FIREBASE_ENABLED;
+  const [unlocked, setUnlocked] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinErr, setPinErr] = useState("");
 
   const refresh = () => setList(getManagedList());
 
@@ -161,13 +164,100 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const doExport = () => {
+  const doExport = async () => {
     const text = exportCustomAsText();
-    if (!text) return flash("未有自訂題可匯出");
-    setImportText(text);
+    if (!text) {
+      flash("未有自訂題可匯出（只有自訂題會匯出）");
+      return;
+    }
+    const csv = text
+      .split("\n")
+      .map((line) => {
+        const parts = line.split("|");
+        return parts
+          .map((p) => {
+            const needsQuote = /[",\n]/.test(p);
+            return needsQuote ? `"${p.replace(/"/g, '""')}"` : p;
+          })
+          .join(",");
+      })
+      .join("\n");
+    const header = "主題,題目,選項A,選項B,選項C,選項D,正確答案\n";
+    const blob = new Blob(["\uFEFF" + header + csv], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `題庫自訂_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    try {
+      await navigator.clipboard.writeText(header + csv);
+    } catch {
+      /* ignore */
+    }
+    setImportText(header + csv);
     setShowImport(true);
-    flash("已填入匯出內容，可複製保存");
+    flash("已下載 CSV，並複製到剪貼簿");
   };
+
+  if (!unlocked) {
+    return (
+      <div className="min-h-screen p-4 bg-amber-50 flex items-center justify-center">
+        <div className="max-w-sm w-full bg-white rounded-3xl shadow-xl p-6 space-y-4 anim-fade-in">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold text-teal-600">📝 題庫管理</h2>
+            <button type="button" onClick={onBack} className="text-sm text-gray-500">
+              ← 返回
+            </button>
+          </div>
+          <p className="text-sm text-gray-500 text-center">請輸入管理密碼先可以改題庫</p>
+          <input
+            type="password"
+            inputMode="numeric"
+            value={pin}
+            onChange={(e) => {
+              setPin(e.target.value);
+              setPinErr("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                if (pin === "4444") {
+                  setUnlocked(true);
+                  setPin("");
+                  setPinErr("");
+                } else {
+                  setPinErr("密碼不正確");
+                }
+              }
+            }}
+            placeholder="輸入密碼"
+            className="w-full border-2 rounded-xl px-4 py-3 text-center text-lg tracking-widest focus:border-teal-400 outline-none"
+            autoFocus
+          />
+          {pinErr && <p className="text-sm text-red-500 text-center">{pinErr}</p>}
+          <button
+            type="button"
+            onClick={() => {
+              if (pin === "4444") {
+                setUnlocked(true);
+                setPin("");
+                setPinErr("");
+              } else {
+                setPinErr("密碼不正確");
+              }
+            }}
+            className="w-full bg-teal-500 text-white font-semibold py-3 rounded-2xl btn-press"
+          >
+            解鎖
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-4 bg-amber-50">
@@ -300,7 +390,7 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
           <div className="bg-white rounded-3xl shadow-xl p-5 space-y-3 anim-slide-up">
             <h3 className="font-bold text-gray-800">批量匯入／匯出</h3>
             <p className="text-xs text-gray-500 leading-relaxed">
-              支援 <b>CSV</b> 或用 <code className="bg-gray-100 px-1">|</code> 分隔。每行一題，7 欄。
+              支援 <b>CSV</b>。匯出會下載檔案；只有<strong>自訂題</strong>會被匯出。
             </p>
             <div className="space-y-2">
               <label className="block">
@@ -335,8 +425,8 @@ export default function QuizBankManager({ onBack }: { onBack: () => void }) {
               <button type="button" onClick={doImport} className="bg-teal-500 text-white font-semibold py-2.5 rounded-xl">
                 匯入為自訂題
               </button>
-              <button type="button" onClick={doExport} className="border-2 border-orange-400 text-orange-600 font-semibold py-2.5 rounded-xl">
-                匯出為文字
+              <button type="button" onClick={() => void doExport()} className="border-2 border-orange-400 text-orange-600 font-semibold py-2.5 rounded-xl">
+                匯出 CSV
               </button>
             </div>
             {customCount > 0 && (
