@@ -8,7 +8,6 @@ const CUSTOM_KEY = "quiz_custom_v1";
 const DISABLED_KEY = "quiz_disabled_builtin_v1";
 
 export type ManagedQuestion = QuizQuestion & {
-  /** 內建題目不可刪除，只可停用 */
   builtin?: boolean;
   disabled?: boolean;
 };
@@ -42,7 +41,6 @@ export function saveDisabledIds(ids: string[]) {
   localStorage.setItem(DISABLED_KEY, JSON.stringify(ids));
 }
 
-/** 練習／挑戰用：內建（未停用）+ 自訂 */
 export function getActiveQuizBank(): QuizQuestion[] {
   const disabled = new Set(loadDisabledIds());
   const builtin = builtInBank.filter((q) => !disabled.has(q.id));
@@ -76,6 +74,7 @@ export function addCustomQuestion(q: Omit<QuizQuestion, "id"> & { id?: string })
   };
   list.unshift(item);
   saveCustomQuestions(list);
+  void pushQuizBankToCloud();
   return item;
 }
 
@@ -85,6 +84,7 @@ export function updateCustomQuestion(id: string, patch: Partial<QuizQuestion>): 
   if (i < 0) return false;
   list[i] = { ...list[i], ...patch, id: list[i].id };
   saveCustomQuestions(list);
+  void pushQuizBankToCloud();
   return true;
 }
 
@@ -93,6 +93,7 @@ export function deleteCustomQuestion(id: string): boolean {
   const next = list.filter((q) => q.id !== id);
   if (next.length === list.length) return false;
   saveCustomQuestions(next);
+  void pushQuizBankToCloud();
   return true;
 }
 
@@ -101,13 +102,14 @@ export function setBuiltinDisabled(id: string, disabled: boolean) {
   if (disabled) set.add(id);
   else set.delete(id);
   saveDisabledIds([...set]);
+  void pushQuizBankToCloud();
 }
 
 export function clearAllCustom() {
   saveCustomQuestions([]);
+  void pushQuizBankToCloud();
 }
 
-/** 解析一行 CSV（支援引號包住含逗號的欄位） */
 function splitCsvLine(line: string): string[] {
   const result: string[] = [];
   let cur = "";
@@ -157,11 +159,6 @@ function isHeaderRow(parts: string[]): boolean {
   );
 }
 
-/**
- * 批量匯入：支援
- * 1) 管道：主題|題目|A|B|C|D|答案
- * 2) CSV：主題,題目,A,B,C,D,答案（可有表頭）
- */
 export function parseImportLines(text: string): { ok: QuizQuestion[]; errors: string[] } {
   const ok: QuizQuestion[] = [];
   const errors: string[] = [];
@@ -210,6 +207,7 @@ export function parseImportLines(text: string): { ok: QuizQuestion[]; errors: st
 export function importCustomQuestions(questions: QuizQuestion[]) {
   const list = loadCustomQuestions();
   saveCustomQuestions([...questions, ...list]);
+  void pushQuizBankToCloud();
 }
 
 export function exportCustomAsText(): string {
@@ -230,4 +228,64 @@ export function topicStats(list: ManagedQuestion[]) {
     if (!q.builtin) map[q.topic].custom++;
   }
   return map;
+}
+
+export async function pushQuizBankToCloud(): Promise<boolean> {
+  try {
+    const { isCloudSyncEnabled, cloudSaveQuizBank } = await import("@/lib/firebase");
+    if (!isCloudSyncEnabled()) return false;
+    return await cloudSaveQuizBank(loadCustomQuestions(), loadDisabledIds());
+  } catch (e) {
+    console.warn("pushQuizBankToCloud", e);
+    return false;
+  }
+}
+
+export async function pullQuizBankFromCloud(): Promise<{
+  ok: boolean;
+  customCount: number;
+  disabledCount: number;
+  fromCloud: boolean;
+}> {
+  try {
+    const { isCloudSyncEnabled, cloudLoadQuizBank } = await import("@/lib/firebase");
+    if (!isCloudSyncEnabled()) {
+      return {
+        ok: true,
+        customCount: loadCustomQuestions().length,
+        disabledCount: loadDisabledIds().length,
+        fromCloud: false,
+      };
+    }
+    const data = await cloudLoadQuizBank();
+    if (!data) {
+      return {
+        ok: false,
+        customCount: loadCustomQuestions().length,
+        disabledCount: loadDisabledIds().length,
+        fromCloud: false,
+      };
+    }
+    saveCustomQuestions(Array.isArray(data.custom) ? data.custom : []);
+    saveDisabledIds(Array.isArray(data.disabled) ? data.disabled : []);
+    return {
+      ok: true,
+      customCount: data.custom.length,
+      disabledCount: data.disabled.length,
+      fromCloud: true,
+    };
+  } catch (e) {
+    console.warn("pullQuizBankFromCloud", e);
+    return {
+      ok: false,
+      customCount: loadCustomQuestions().length,
+      disabledCount: loadDisabledIds().length,
+      fromCloud: false,
+    };
+  }
+}
+
+export async function persistAndSync(): Promise<{ cloud: boolean }> {
+  const cloud = await pushQuizBankToCloud();
+  return { cloud };
 }
