@@ -2,7 +2,8 @@
 
 import { BEY_BADGES, getBeyById, type BeyBadge } from "@/data/beyBadges";
 
-const KEY = "bey_collection_v1";
+/** v2 = 重設所有裝置已收集的陀螺 */
+const KEY = "bey_collection_v2";
 
 export type OwnedBey = {
   id: string;
@@ -25,6 +26,11 @@ export function loadBeyCollection(): OwnedBey[] {
 
 function saveBeyCollection(list: OwnedBey[]) {
   localStorage.setItem(KEY, JSON.stringify(list));
+}
+
+export function clearBeyCollection() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(KEY);
 }
 
 export function ownedCount(): number {
