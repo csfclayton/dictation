@@ -8,6 +8,41 @@ import {
 } from "@/lib/beyCollection";
 import type { BeyBadge } from "@/data/beyBadges";
 
+function BeyImage({ badge }: { badge: BeyBadge }) {
+  const [src, setSrc] = useState(badge.image);
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return <span className="text-3xl">🌀</span>;
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={badge.name}
+      className="w-full h-full object-contain p-1"
+      loading="lazy"
+      onError={() => {
+        // 嘗試去掉 R/M 後綴再載一次
+        const m = src.match(/Blade\/(.+)\.webp$/);
+        if (m) {
+          let id = m[1];
+          if (/[RM]$/.test(id)) {
+            while (/[RM]$/.test(id)) id = id.slice(0, -1);
+            const next = src.replace(/Blade\/.+\.webp$/, `Blade/${id}.webp`);
+            if (next !== src) {
+              setSrc(next);
+              return;
+            }
+          }
+        }
+        setFailed(true);
+      }}
+    />
+  );
+}
+
 export default function BeyCollection({ onBack }: { onBack: () => void }) {
   const [rows, setRows] = useState<{ badge: BeyBadge; owned: OwnedBey | null }[]>(
     []
@@ -101,23 +136,11 @@ export default function BeyCollection({ onBack }: { onBack: () => void }) {
               className={`rounded-xl p-2 border text-center ${
                 owned
                   ? "bg-[#1a2438] border-cyan-500/40"
-                  : "bg-black/30 border-white/5 opacity-45 grayscale"
+                  : "bg-black/30 border-white/5 opacity-50"
               }`}
             >
               <div className="aspect-square rounded-lg bg-black/50 flex items-center justify-center overflow-hidden mb-1.5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={badge.image}
-                  alt={badge.name}
-                  className="w-full h-full object-contain p-1"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                    (e.target as HTMLImageElement).parentElement!.innerHTML =
-                      '<span class="text-3xl">🌀</span>';
-                  }}
-                />
+                <BeyImage badge={badge} />
               </div>
               <div className="text-[10px] leading-tight text-white/90 line-clamp-2 min-h-[2.2em]">
                 {owned ? badge.name : "？？？"}
@@ -139,7 +162,7 @@ export default function BeyCollection({ onBack }: { onBack: () => void }) {
           >
             beyblade.phstudy.org
           </a>
-          （僅供學習收集展示）
+          （僅供學習收集展示）· 共 {stats.total} 枚
         </p>
       </div>
     </div>
