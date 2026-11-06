@@ -18,7 +18,7 @@ const RAW: [string, string][] = [
   ...(p5 as [string, string][]),
 ];
 
-/** 套組來自 beyblade.phstudy.org（僅供學習徽章展示） */
+/** 全部套組來自 beyblade.phstudy.org（僅供學習徽章展示）共 305 枚 */
 const seen = new Set<string>();
 export const BEY_BADGES: BeyBadge[] = [];
 for (const [id, name] of RAW) {
