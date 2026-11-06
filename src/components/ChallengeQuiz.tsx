@@ -50,7 +50,7 @@ function playChallengeBgm(): { stop: () => void } | null {
   }
 }
 
-const APP_VERSION = "v2026.11.06d";
+const APP_VERSION = "v2026.11.06e";
 
 type View =
   | "menu" | "practiceMenu" | "practice" | "challengeSetup" | "challengePlay"
@@ -382,7 +382,7 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
             <div className="space-y-2 max-h-[70vh] overflow-y-auto">
               {board.map((e, i) => (
                 <div key={e.id} className={`flex gap-3 p-3 rounded-xl items-center ${i === 0 ? "bg-yellow-50 border-2 border-yellow-300" : "bg-gray-50"}`}>
-                  <div className={`w-8 text-center font-bold text-lg ${i === 0 ? "" : i < 3 ? "text-orange-500" : "text-gray-400"}`}>
+                  <div className={`w-8 text-center font-bold text-lg ${i === 0 ? "" : i < 3 ? "text-orange-500" : "text-gray-400"`}>
                     {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
                   </div>
                   <div className="flex-1 min-w-0">
