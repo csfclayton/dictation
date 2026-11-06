@@ -172,7 +172,9 @@ export function sfxWrong() {
   playTone(200, 0.2, "sawtooth", 0.06);
 }
 export function sfxUrgent() {
-  playTone(1200, 0.1, "square", 0.1);
+  // 倒數緊張：高音短促 + 稍低一聲
+  playTone(1400, 0.07, "square", 0.12);
+  setTimeout(() => playTone(980, 0.09, "square", 0.1), 90);
 }
 export function sfxComplete() {
   [523, 659, 784, 1046].forEach((f, i) =>

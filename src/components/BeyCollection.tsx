@@ -24,7 +24,6 @@ function BeyImage({ badge }: { badge: BeyBadge }) {
       className="w-full h-full object-contain p-1"
       loading="lazy"
       onError={() => {
-        // 嘗試去掉 R/M 後綴再載一次
         const m = src.match(/Blade\/(.+)\.webp$/);
         if (m) {
           let id = m[1];
@@ -40,6 +39,17 @@ function BeyImage({ badge }: { badge: BeyBadge }) {
         setFailed(true);
       }}
     />
+  );
+}
+
+/** 未解鎖：完全唔顯示圖同名，避免透露 */
+function LockedSlot() {
+  return (
+    <div className="aspect-square rounded-lg bg-black/70 flex items-center justify-center overflow-hidden mb-1.5 border border-white/5">
+      <span className="text-3xl opacity-40 select-none" aria-hidden>
+        ❓
+      </span>
+    </div>
   );
 }
 
@@ -81,7 +91,7 @@ export default function BeyCollection({ onBack }: { onBack: () => void }) {
             </button>
           </div>
           <p className="text-xs text-white/55 leading-relaxed">
-            挑戰答對率達 80% 或以上，可隨機獲得一枚陀螺徽章。圖片來源 beyblade.phstudy.org（僅供學習展示）。
+            挑戰答對率達 80% 或以上，可隨機獲得一枚陀螺徽章。未解鎖嘅會保持神秘，唔會透露外形同名稱。
           </p>
           <div className="flex gap-3 text-center">
             <div className="flex-1 bg-black/40 rounded-xl py-2">
@@ -136,12 +146,16 @@ export default function BeyCollection({ onBack }: { onBack: () => void }) {
               className={`rounded-xl p-2 border text-center ${
                 owned
                   ? "bg-[#1a2438] border-cyan-500/40"
-                  : "bg-black/30 border-white/5 opacity-50"
+                  : "bg-black/40 border-white/5 opacity-60"
               }`}
             >
-              <div className="aspect-square rounded-lg bg-black/50 flex items-center justify-center overflow-hidden mb-1.5">
-                <BeyImage badge={badge} />
-              </div>
+              {owned ? (
+                <div className="aspect-square rounded-lg bg-black/50 flex items-center justify-center overflow-hidden mb-1.5">
+                  <BeyImage badge={badge} />
+                </div>
+              ) : (
+                <LockedSlot />
+              )}
               <div className="text-[10px] leading-tight text-white/90 line-clamp-2 min-h-[2.2em]">
                 {owned ? badge.name : "？？？"}
               </div>
