@@ -50,7 +50,7 @@ function playChallengeBgm(): { stop: () => void } | null {
   }
 }
 
-const APP_VERSION = "v2026.11.06c";
+const APP_VERSION = "v2026.11.06d";
 
 type View =
   | "menu" | "practiceMenu" | "practice" | "challengeSetup" | "challengePlay"
@@ -114,14 +114,21 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     };
     void saveLeaderboardEntry(entry).then(() => refreshBoard());
     setUnlocks(applyChallengeToAdventure(topics, entry.score));
-    try {
-      const reward = grantRandomBey();
-      setRewardBey({ badge: reward.badge, isNew: reward.isNew });
-    } catch { setRewardBey(null); }
+    const totalQ = Math.max(1, list.length || 10);
+    const correct = totalQ - w.length;
+    const accuracy = correct / totalQ;
+    if (accuracy >= 0.8) {
+      try {
+        const reward = grantRandomBey();
+        setRewardBey({ badge: reward.badge, isNew: reward.isNew });
+      } catch { setRewardBey(null); }
+    } else {
+      setRewardBey(null);
+    }
     setCScore(entry.score);
     setWrongs(w);
     setView("challengeResult");
-  }, [clearTimer, stopBg, name, topics, refreshBoard]);
+  }, [clearTimer, stopBg, name, topics, refreshBoard, list.length]);
 
   const startChallenge = () => {
     const bank = getActiveQuizBank();
@@ -231,12 +238,20 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
             <button onClick={() => setView("menu")} className="text-sm text-gray-500">← 返回</button>
           </div>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="你的名字" className="w-full border-2 rounded-xl px-4 py-3" />
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-500">選擇主題</span>
+            <span className="space-x-3">
+              <button type="button" onClick={() => { playClick(); setTopics([...ALL_TOPICS]); }} className="text-teal-600 underline">全選</button>
+              <button type="button" onClick={() => { playClick(); setTopics([]); }} className="text-gray-500 underline">取消全選</button>
+            </span>
+          </div>
           <div className="flex flex-wrap gap-2">
             {ALL_TOPICS.map((t) => (
               <button key={t} type="button" onClick={() => setTopics((p) => p.includes(t) ? p.filter((x) => x !== t) : [...p, t])}
                 className={`px-3 py-1.5 rounded-full text-sm border-2 ${topics.includes(t) ? "border-red-500 bg-red-50 text-red-800" : "border-gray-200 text-gray-500"}`}>{t}</button>
             ))}
           </div>
+          <p className="text-xs text-center text-gray-400">答對率達 80% 或以上可抽取陀螺徽章</p>
           <button type="button" onClick={startChallenge} className="w-full bg-red-500 text-white font-semibold py-4 rounded-2xl btn-press">開始挑戰（10題）</button>
         </div>
       </div>
@@ -309,6 +324,9 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
               <div className="text-sm font-medium text-indigo-900">{rewardBey.badge.name}</div>
               <button type="button" onClick={() => setView("beyCollection")} className="text-xs text-indigo-600 underline">查看圖鑑</button>
             </div>
+          )}
+          {!rewardBey && wrongs.length > 2 && (
+            <p className="text-xs text-center text-gray-400">答對率未達 80%，今次未抽到陀螺徽章</p>
           )}
           {unlocks.length > 0 && (
             <div className="space-y-2">
