@@ -10,6 +10,7 @@ import {
   shuffleQuestion,
   loadLeaderboardAsync,
   saveLeaderboardEntry,
+  deleteLeaderboardEntry,
   sfxClick,
   sfxCorrect,
   sfxWrong,
@@ -328,29 +329,52 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   if (view === "leaderboard") {
     return (
       <div className="min-h-screen p-4 bg-amber-50">
-        <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-4">
+        <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-4 anim-fade-in">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-orange-600">🏆 龍虎榜</h2>
             <button onClick={() => setView("menu")} className="text-sm text-gray-500">← 返回</button>
           </div>
-          {boardLoading ? <div className="text-center text-gray-400 py-12">載入中…</div> :
-            board.length === 0 ? <div className="text-center text-gray-400 py-12">暫無紀錄</div> :
+          <div className="flex items-center justify-between text-xs text-gray-400">
+            <span>{cloudOn ? "☁️ 雲端同步（各裝置共用）" : "💾 本機儲存（各裝置獨立）"}</span>
+            <button type="button" onClick={() => void refreshBoard()} className="text-teal-600 underline">重新整理</button>
+          </div>
+          <p className="text-xs text-gray-400 text-center">撳 ✕ 可刪除單筆；清空全部請到「題庫管理及設定」</p>
+          {boardLoading ? (
+            <div className="text-center text-gray-400 py-12">載入中…</div>
+          ) : board.length === 0 ? (
+            <div className="text-center text-gray-400 py-12">暫無紀錄</div>
+          ) : (
             <div className="space-y-2 max-h-[70vh] overflow-y-auto">
               {board.map((e, i) => (
-                <div key={e.id} className={`flex gap-3 p-3 rounded-xl ${i === 0 ? "bg-yellow-50 border-2 border-yellow-300" : "bg-gray-50"}`}>
-                  <div className="w-8 text-center font-bold">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</div>
+                <div key={e.id} className={`flex gap-3 p-3 rounded-xl items-center ${i === 0 ? "bg-yellow-50 border-2 border-yellow-300 anim-float" : "bg-gray-50 anim-slide-up"}`}>
+                  <div className={`w-8 text-center font-bold text-lg ${i === 0 ? "anim-medal" : i < 3 ? "text-orange-500" : "text-gray-400"}`}>
+                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold truncate">{e.name}</div>
                     <div className="text-xs text-gray-500 truncate">{e.topics} · {e.date} {e.time}</div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <div className="font-bold text-orange-600">{e.score}</div>
                     <div className="text-xs text-gray-400">錯{e.wrongCount}</div>
                   </div>
+                  <button
+                    type="button"
+                    title="刪除此紀錄"
+                    className="text-red-400 hover:text-red-600 text-xs shrink-0 px-1"
+                    onClick={async () => {
+                      if (!confirm(`刪除「${e.name}」${e.score} 分的紀錄？`)) return;
+                      await deleteLeaderboardEntry(e.id);
+                      playClick();
+                      void refreshBoard();
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
             </div>
-          }
+          )}
         </div>
       </div>
     );
