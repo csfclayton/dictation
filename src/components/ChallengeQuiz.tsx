@@ -50,7 +50,7 @@ function playChallengeBgm(): { stop: () => void } | null {
   }
 }
 
-const APP_VERSION = "v2026.11.06e";
+const APP_VERSION = "v2026.11.06f";
 
 type View =
   | "menu" | "practiceMenu" | "practice" | "challengeSetup" | "challengePlay"
@@ -80,6 +80,8 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   const cloudOn = FIREBASE_ENABLED;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bgRef = useRef<{ stop: () => void } | null>(null);
+  /** 上一局挑戰題 id，下一局避免重複 */
+  const lastChallengeIdsRef = useRef<string[]>([]);
 
   const refreshBoard = useCallback(async () => {
     setBoardLoading(true);
@@ -134,7 +136,12 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     const bank = getActiveQuizBank();
     let pool = topics.length ? bank.filter((q) => topics.includes(q.topic)) : bank;
     if (!pool.length) pool = bank;
-    const picked = shuffle(pool).slice(0, Math.min(10, pool.length)).map(shuffleQuestion);
+    const prev = new Set(lastChallengeIdsRef.current);
+    const fresh = pool.filter((q) => !prev.has(q.id));
+    // 夠 10 題就避開上一局；否則仍用完整 pool
+    const source = fresh.length >= 10 ? fresh : pool;
+    const picked = shuffle(source).slice(0, Math.min(10, source.length)).map(shuffleQuestion);
+    lastChallengeIdsRef.current = picked.map((q) => q.id);
     setList(picked);
     setIndex(0);
     setSelected(null);
