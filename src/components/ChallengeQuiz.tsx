@@ -10,6 +10,7 @@ import {
   shuffleQuestion,
   loadLeaderboardAsync,
   saveLeaderboardEntry,
+  deleteLeaderboardEntry,
   sfxClick,
   sfxCorrect,
   sfxWrong,
@@ -509,7 +510,7 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
           <span>{cloudOn ? "☁️ 雲端同步（各裝置共用）" : "💾 本機儲存（各裝置獨立）"}</span>
           <button type="button" onClick={() => void refreshBoard()} className="text-teal-600 underline">重新整理</button>
         </div>
-        <p className="text-xs text-gray-400 text-center">如需清除成績，請到「題庫管理及設定」</p>
+        <p className="text-xs text-gray-400 text-center">撳 ✕ 可刪除單筆；清空全部請到「題庫管理及設定」</p>
         {boardLoading ? (
           <div className="text-center text-gray-400 py-12">載入中…</div>
         ) : board.length === 0 ? (
@@ -517,7 +518,7 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
         ) : (
           <div className="space-y-2 max-h-[70vh] overflow-y-auto">
             {board.map((e, i) => (
-              <div key={e.id} className={`flex gap-3 p-3 rounded-xl ${i === 0 ? "bg-yellow-50 border-2 border-yellow-300 anim-float" : "bg-gray-50 anim-slide-up"}`}>
+              <div key={e.id} className={`flex gap-3 p-3 rounded-xl items-center ${i === 0 ? "bg-yellow-50 border-2 border-yellow-300 anim-float" : "bg-gray-50 anim-slide-up"}`}>
                 <div className={`w-8 text-center font-bold text-lg ${i === 0 ? "anim-medal" : i < 3 ? "text-orange-500" : "text-gray-400"}`}>
                   {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
                 </div>
@@ -525,10 +526,23 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
                   <div className="font-semibold truncate">{e.name}</div>
                   <div className="text-xs text-gray-500 truncate">{e.topics} · {e.date} {e.time}</div>
                 </div>
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <div className="font-bold text-orange-600">{e.score}</div>
                   <div className="text-xs text-gray-400">錯{e.wrongCount}</div>
                 </div>
+                <button
+                  type="button"
+                  title="刪除此紀錄"
+                  className="text-red-400 hover:text-red-600 text-xs shrink-0 px-1"
+                  onClick={async () => {
+                    if (!confirm(`刪除「${e.name}」${e.score} 分的紀錄？`)) return;
+                    await deleteLeaderboardEntry(e.id);
+                    playClick();
+                    void refreshBoard();
+                  }}
+                >
+                  ✕
+                </button>
               </div>
             ))}
           </div>
