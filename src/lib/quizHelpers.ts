@@ -54,7 +54,6 @@ export function loadLeaderboardLocal(): LeaderboardEntry[] {
   }
 }
 
-/** 同步本機版本（兼容舊呼叫）；畫面請優先用 loadLeaderboardAsync */
 export function loadLeaderboard(): LeaderboardEntry[] {
   return loadLeaderboardLocal();
 }
@@ -68,6 +67,28 @@ export function saveLeaderboardLocal(entry: LeaderboardEntry) {
 
 export function clearLeaderboardLocal() {
   localStorage.removeItem(LEADERBOARD_KEY);
+}
+
+export function deleteLeaderboardEntryLocal(id: string): boolean {
+  const list = loadLeaderboardLocal();
+  const next = list.filter((e) => e.id !== id);
+  if (next.length === list.length) return false;
+  localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(next));
+  return true;
+}
+
+export async function deleteLeaderboardEntry(id: string): Promise<{ local: boolean; cloud: boolean }> {
+  const local = deleteLeaderboardEntryLocal(id);
+  let cloud = false;
+  try {
+    const { isCloudSyncEnabled, cloudDeleteLeaderboardEntry } = await import("@/lib/firebase");
+    if (isCloudSyncEnabled()) {
+      cloud = await cloudDeleteLeaderboardEntry(id);
+    }
+  } catch (e) {
+    console.warn("cloud delete entry failed", e);
+  }
+  return { local, cloud };
 }
 
 export async function loadLeaderboardAsync(): Promise<LeaderboardEntry[]> {
