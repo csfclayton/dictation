@@ -10,11 +10,9 @@ import {
   shuffleQuestion,
   loadLeaderboardAsync,
   saveLeaderboardEntry,
-  deleteLeaderboardEntry,
   sfxClick,
   sfxCorrect,
   sfxWrong,
-  sfxUrgent,
   sfxComplete,
   type LeaderboardEntry,
 } from "@/lib/quizHelpers";
@@ -245,7 +243,7 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     if (!q) return null;
     return (
       <div className="min-h-screen p-4 bg-amber-50 relative">
-        <ScorePopup value={scorePopup} />
+        <ScorePopup points={scorePopup} show={scorePopup > 0} />
         {showCombo && <div className="fixed top-20 left-1/2 -translate-x-1/2 text-2xl font-bold text-orange-500 z-50">連擊 x{combo}!</div>}
         <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-4">
           <div className="flex justify-between text-sm text-gray-500">
@@ -358,7 +356,6 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     );
   }
 
-  // practiceMenu / practice simplified fallback
   return (
     <div className="min-h-screen p-4 bg-amber-50 flex items-center justify-center">
       <div className="bg-white rounded-3xl shadow-xl p-8 max-w-md text-center space-y-4">
