@@ -21,6 +21,8 @@ import {
 import { Confetti, ScorePopup } from "@/components/GameEffects";
 import { FIREBASE_ENABLED } from "@/lib/firebaseConfig";
 import { loadChallengeSettings } from "@/lib/challengeSettings";
+import AdventureMap from "@/components/AdventureMap";
+import { applyChallengeToAdventure, type UnlockResult } from "@/lib/adventureProgress";
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -61,7 +63,8 @@ type View =
   | "challengePlay"
   | "challengeResult"
   | "leaderboard"
-  | "bankManage";
+  | "bankManage"
+  | "adventure";
 
 export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   const [view, setView] = useState<View>("menu");
@@ -85,6 +88,7 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
   const [combo, setCombo] = useState(0);
   const [showCombo, setShowCombo] = useState(false);
   const [boardLoading, setBoardLoading] = useState(false);
+  const [unlocks, setUnlocks] = useState<UnlockResult[]>([]);
   const cloudOn = FIREBASE_ENABLED;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bgRef = useRef<{ stop: () => void } | null>(null);
@@ -203,6 +207,8 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
         wrongCount: w.length,
       };
       void saveLeaderboardEntry(entry).then(() => refreshBoard());
+      const u = applyChallengeToAdventure(topics, entry.score);
+      setUnlocks(u);
       setCScore(entry.score);
       setWrongs(w);
       setView("challengeResult");
@@ -298,6 +304,10 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
     </div>
   );
 
+  if (view === "adventure") {
+    return <AdventureMap onBack={() => setView("menu")} />;
+  }
+
   if (view === "bankManage") {
     return <QuizBankManager onBack={() => setView("menu")} />;
   }
@@ -314,6 +324,7 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
           <button type="button" onClick={() => { playClick(); setView("practiceMenu"); }} className="w-full bg-teal-500 hover:bg-teal-600 text-white text-xl font-semibold py-4 rounded-2xl btn-press card-hover">📖 常識練習</button>
           <button type="button" onClick={() => { playClick(); const s = loadChallengeSettings(); setBgOn(s.soundOn); setTimeLimit(s.timeLimit); setView("challengeSetup"); }} className="w-full bg-red-500 hover:bg-red-600 text-white text-xl font-semibold py-4 rounded-2xl btn-press card-hover">⚡ 挑戰模式</button>
           <button type="button" onClick={() => { playClick(); setView("bankManage"); }} className="w-full border-2 border-teal-400 text-teal-700 font-semibold py-3 rounded-2xl btn-press">📝 題庫管理及設定</button>
+          <button type="button" onClick={() => { playClick(); setView("adventure"); }} className="w-full border-2 border-amber-400 text-amber-700 font-semibold py-3 rounded-2xl btn-press">🗺️ 冒險地圖</button>
           <button type="button" onClick={() => { playClick(); setView("leaderboard"); void refreshBoard(); }} className="w-full border-2 border-orange-400 text-orange-600 font-semibold py-3 rounded-2xl btn-press">🏆 龍虎榜</button>
         </div>
       </div>
@@ -477,6 +488,31 @@ export default function ChallengeQuiz({ onBack }: { onBack: () => void }) {
           <h2 className="text-2xl font-bold text-center text-red-600">挑戰完成！</h2>
           <div className="text-center text-5xl font-bold text-orange-500 anim-pop">{cScore.toFixed(1)}</div>
           <div className="text-center text-sm text-gray-500">{name}</div>
+          {unlocks.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-bold text-amber-700 text-center">🗺️ 地圖有新進展！</div>
+              {unlocks.map((u) => (
+                <div key={u.routeId + u.newIndex} className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm anim-slide-up">
+                  <div className="font-semibold text-amber-800">
+                    {u.stationEmoji} {u.routeName} · {u.stationTitle}
+                  </div>
+                  <p className="text-gray-600 mt-1 leading-relaxed">{u.story}</p>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setView("adventure")}
+                className="w-full border-2 border-amber-400 text-amber-700 font-semibold py-2 rounded-xl text-sm"
+              >
+                查看完整冒險地圖
+              </button>
+            </div>
+          )}
+          {unlocks.length === 0 && cScore < 40 && (
+            <p className="text-xs text-center text-gray-400">
+              攞 40 分或以上，並選中「香港／地理」或「科學／健康／氣候」主題，可推進冒險地圖
+            </p>
+          )}
           {wrongs.length ? (
             <div className="space-y-2 max-h-56 overflow-y-auto">
               <div className="font-medium text-red-600">錯題（{wrongs.length}）</div>
