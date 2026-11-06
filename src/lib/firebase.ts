@@ -13,6 +13,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  deleteDoc,
   type Firestore,
 } from "firebase/firestore";
 import { FIREBASE_ENABLED, firebaseConfig } from "@/lib/firebaseConfig";
@@ -89,6 +90,18 @@ export async function cloudSaveLeaderboardEntry(
     return true;
   } catch (e) {
     console.error("cloudSaveLeaderboardEntry", e);
+    return false;
+  }
+}
+
+export async function cloudDeleteLeaderboardEntry(id: string): Promise<boolean> {
+  const database = getDb();
+  if (!database || !id) return false;
+  try {
+    await deleteDoc(doc(database, COL, id));
+    return true;
+  } catch (e) {
+    console.error("cloudDeleteLeaderboardEntry", e);
     return false;
   }
 }
