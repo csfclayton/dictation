@@ -24,7 +24,6 @@ export function loadBeyCollection(): OwnedBey[] {
   }
 }
 
-
 /** 戰鬥 App 解鎖 key（與 beyblade-x-arena 共用 localStorage） */
 const BATTLE_UNLOCK_KEY = "beyUnlocked_v1";
 const BATTLE_FILTER_KEY = "beyUnlockFilterOn_v1";
@@ -55,7 +54,6 @@ export function syncCollectionToBattleApp(list?: OwnedBey[]) {
   }
 }
 
-
 function saveBeyCollection(list: OwnedBey[]) {
   localStorage.setItem(KEY, JSON.stringify(list));
 }
@@ -73,16 +71,93 @@ export function totalBeyTypes(): number {
   return BEY_BADGES.length;
 }
 
-/** 優先抽未擁有；若已全收集則隨機（可重複疊加 count） */
+const LEVEL_COUNT = 10;
+
+/** 全部陀螺按名稱穩定排序後分成 10 級（Lv1 最先抽） */
+function sortedBadges(): BeyBadge[] {
+  return [...BEY_BADGES].sort(
+    (a, b) => a.name.localeCompare(b.name, "zh-Hant") || a.id.localeCompare(b.id)
+  );
+}
+
+let _levelMap: Record<string, number> | null = null;
+let _levelBuckets: BeyBadge[][] | null = null;
+
+function ensureLevels() {
+  if (_levelMap && _levelBuckets) return;
+  const sorted = sortedBadges();
+  const n = sorted.length;
+  _levelMap = {};
+  _levelBuckets = Array.from({ length: LEVEL_COUNT }, () => [] as BeyBadge[]);
+  for (let i = 0; i < n; i++) {
+    let lv = Math.floor((i * LEVEL_COUNT) / n) + 1;
+    if (lv > LEVEL_COUNT) lv = LEVEL_COUNT;
+    _levelMap[sorted[i].id] = lv;
+    _levelBuckets[lv - 1].push(sorted[i]);
+  }
+}
+
+/** 取得陀螺等級 1–10 */
+export function getBeyLevel(id: string): number {
+  ensureLevels();
+  return _levelMap![id] || 1;
+}
+
+export function levelTotal(lv: number): number {
+  ensureLevels();
+  if (lv < 1 || lv > LEVEL_COUNT) return 0;
+  return _levelBuckets![lv - 1].length;
+}
+
+export function levelOwnedCount(lv: number, ownedIds?: Set<string>): number {
+  ensureLevels();
+  if (lv < 1 || lv > LEVEL_COUNT) return 0;
+  const ids = ownedIds || new Set(loadBeyCollection().map((o) => o.id));
+  return _levelBuckets![lv - 1].filter((b) => ids.has(b.id)).length;
+}
+
+/** 目前可抽最高等級：該 level 已收集 ≥80% 才可抽上一級 */
+export function getMaxDrawLevel(ownedIds?: Set<string>): number {
+  ensureLevels();
+  const ids = ownedIds || new Set(loadBeyCollection().map((o) => o.id));
+  let maxLv = 1;
+  for (let lv = 1; lv < LEVEL_COUNT; lv++) {
+    const total = levelTotal(lv);
+    if (!total) {
+      maxLv = lv + 1;
+      continue;
+    }
+    const owned = levelOwnedCount(lv, ids);
+    if (owned / total >= 0.8) maxLv = lv + 1;
+    else break;
+  }
+  return maxLv;
+}
+
+/** 由最低 level 起抽；滿 80% 開下一級 */
 export function grantRandomBey(): {
   badge: BeyBadge;
   isNew: boolean;
   owned: OwnedBey;
 } {
+  ensureLevels();
   const owned = loadBeyCollection();
   const ownedIds = new Set(owned.map((o) => o.id));
-  const missing = BEY_BADGES.filter((b) => !ownedIds.has(b.id));
-  const pool = missing.length ? missing : BEY_BADGES;
+  const maxLv = getMaxDrawLevel(ownedIds);
+
+  const poolMissing: BeyBadge[] = [];
+  for (let lv = 1; lv <= maxLv; lv++) {
+    for (const b of _levelBuckets![lv - 1]) {
+      if (!ownedIds.has(b.id)) poolMissing.push(b);
+    }
+  }
+  let pool = poolMissing;
+  if (!pool.length) {
+    pool = [];
+    for (let lv = 1; lv <= maxLv; lv++) pool.push(..._levelBuckets![lv - 1]);
+  }
+  if (!pool.length) pool = BEY_BADGES;
+
   const badge = pool[Math.floor(Math.random() * pool.length)]!;
   const now = Date.now();
   const existing = owned.find((o) => o.id === badge.id);
@@ -110,6 +185,7 @@ export function collectionStats() {
     total,
     copies,
     percent: total ? Math.round((unique / total) * 100) : 0,
+    maxDrawLevel: getMaxDrawLevel(new Set(list.map((o) => o.id))),
   };
 }
 
@@ -119,9 +195,19 @@ export function getOwnedMap(): Record<string, OwnedBey> {
   return m;
 }
 
-export function resolveOwned(): { badge: BeyBadge; owned: OwnedBey | null }[] {
+/** 圖鑑列表：由 Level 低至高排列 */
+export function resolveOwned(): { badge: BeyBadge; owned: OwnedBey | null; level: number }[] {
+  ensureLevels();
   const map = getOwnedMap();
-  return BEY_BADGES.map((b) => ({ badge: b, owned: map[b.id] || null }));
+  const rows = BEY_BADGES.map((b) => ({
+    badge: b,
+    owned: map[b.id] || null,
+    level: getBeyLevel(b.id),
+  }));
+  rows.sort(
+    (a, b) => a.level - b.level || a.badge.name.localeCompare(b.badge.name, "zh-Hant")
+  );
+  return rows;
 }
 
 export { getBeyById };
