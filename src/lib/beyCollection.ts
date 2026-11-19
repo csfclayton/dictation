@@ -1,6 +1,7 @@
 "use client";
 
 import { BEY_BADGES, getBeyById, type BeyBadge } from "@/data/beyBadges";
+import { battleLevelForBadgeId } from "@/data/beyBattleLevels";
 
 /** v2 = 重設所有裝置已收集的陀螺 */
 const KEY = "bey_collection_v2";
@@ -24,7 +25,6 @@ export function loadBeyCollection(): OwnedBey[] {
   }
 }
 
-/** 戰鬥 App 解鎖 key（與 beyblade-x-arena 共用 localStorage） */
 const BATTLE_UNLOCK_KEY = "beyUnlocked_v1";
 const BATTLE_FILTER_KEY = "beyUnlockFilterOn_v1";
 
@@ -32,7 +32,6 @@ function badgeIdToBattleKey(id: string): string {
   return String(id || "").replace(/-/g, "").toLowerCase();
 }
 
-/** 將圖鑑收藏同步到戰鬥 App 解鎖清單 */
 export function syncCollectionToBattleApp(list?: OwnedBey[]) {
   if (typeof window === "undefined") return;
   try {
@@ -73,31 +72,46 @@ export function totalBeyTypes(): number {
 
 const LEVEL_COUNT = 10;
 
-/** 全部陀螺按名稱穩定排序後分成 10 級（Lv1 最先抽） */
-function sortedBadges(): BeyBadge[] {
-  return [...BEY_BADGES].sort(
-    (a, b) => a.name.localeCompare(b.name, "zh-Hant") || a.id.localeCompare(b.id)
-  );
-}
-
+/**
+ * 等級與戰鬥 App 對齊：
+ * attack+defense+stamina+speed 總和排序後均分 Lv.1–10
+ * （beyBattleLevels.ts 由 arena BEY_DATA 產生）
+ */
 let _levelMap: Record<string, number> | null = null;
 let _levelBuckets: BeyBadge[][] | null = null;
 
 function ensureLevels() {
   if (_levelMap && _levelBuckets) return;
-  const sorted = sortedBadges();
-  const n = sorted.length;
   _levelMap = {};
   _levelBuckets = Array.from({ length: LEVEL_COUNT }, () => [] as BeyBadge[]);
-  for (let i = 0; i < n; i++) {
-    let lv = Math.floor((i * LEVEL_COUNT) / n) + 1;
-    if (lv > LEVEL_COUNT) lv = LEVEL_COUNT;
-    _levelMap[sorted[i].id] = lv;
-    _levelBuckets[lv - 1].push(sorted[i]);
+
+  const withBattle: { b: BeyBadge; lv: number }[] = [];
+  const without: BeyBadge[] = [];
+  for (const b of BEY_BADGES) {
+    const lv = battleLevelForBadgeId(b.id);
+    if (lv != null && lv >= 1 && lv <= 10) withBattle.push({ b, lv });
+    else without.push(b);
+  }
+  for (const { b, lv } of withBattle) {
+    _levelMap[b.id] = lv;
+    _levelBuckets[lv - 1].push(b);
+  }
+  // 未對應戰鬥資料：填入較空嘅等級桶
+  without.sort((a, b) => a.name.localeCompare(b.name, "zh-Hant") || a.id.localeCompare(b.id));
+  for (const b of without) {
+    let best = 0;
+    let bestLen = _levelBuckets![0].length;
+    for (let i = 1; i < LEVEL_COUNT; i++) {
+      if (_levelBuckets![i].length < bestLen) {
+        best = i;
+        bestLen = _levelBuckets![i].length;
+      }
+    }
+    _levelMap[b.id] = best + 1;
+    _levelBuckets[best].push(b);
   }
 }
 
-/** 取得陀螺等級 1–10 */
 export function getBeyLevel(id: string): number {
   ensureLevels();
   return _levelMap![id] || 1;
@@ -116,7 +130,6 @@ export function levelOwnedCount(lv: number, ownedIds?: Set<string>): number {
   return _levelBuckets![lv - 1].filter((b) => ids.has(b.id)).length;
 }
 
-/** 目前可抽最高等級：該 level 已收集 ≥80% 才可抽上一級 */
 export function getMaxDrawLevel(ownedIds?: Set<string>): number {
   ensureLevels();
   const ids = ownedIds || new Set(loadBeyCollection().map((o) => o.id));
@@ -134,7 +147,6 @@ export function getMaxDrawLevel(ownedIds?: Set<string>): number {
   return maxLv;
 }
 
-/** 由最低 level 起抽；滿 80% 開下一級 */
 export function grantRandomBey(): {
   badge: BeyBadge;
   isNew: boolean;
@@ -195,7 +207,7 @@ export function getOwnedMap(): Record<string, OwnedBey> {
   return m;
 }
 
-/** 圖鑑列表：由 Level 低至高排列 */
+/** 圖鑑：由戰鬥 App 同級 Lv 低至高排列 */
 export function resolveOwned(): { badge: BeyBadge; owned: OwnedBey | null; level: number }[] {
   ensureLevels();
   const map = getOwnedMap();
