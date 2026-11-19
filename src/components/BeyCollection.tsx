@@ -5,38 +5,54 @@ import {
   collectionStats,
   resolveOwned,
   type OwnedBey,
+  syncCollectionToBattleApp,
+  loadBeyCollection,
 } from "@/lib/beyCollection";
 import type { BeyBadge } from "@/data/beyBadges";
 
-function BeyImage({ badge }: { badge: BeyBadge }) {
-  const [src, setSrc] = useState(badge.image);
-  const [failed, setFailed] = useState(false);
+function buildImageCandidates(badge: BeyBadge): string[] {
+  const id = badge.id;
+  let base = id;
+  while (/[RM]$/.test(base)) base = base.slice(0, -1);
+  const list = [
+    badge.image,
+    `https://beyblade.phstudy.org/images/thumb/site/Blade/${base}.webp`,
+    `https://beyblade.phstudy.org/images/thumb/site/Blade/${id}.webp`,
+  ];
+  // 去重並去掉空值
+  return Array.from(new Set(list.filter(Boolean)));
+}
 
-  if (failed) {
-    return <span className="text-3xl">🌀</span>;
+function BeyImage({ badge }: { badge: BeyBadge }) {
+  const candidates = buildImageCandidates(badge);
+  const [idx, setIdx] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const src = candidates[idx] || "";
+
+  if (failed || !src) {
+    return (
+      <span className="text-3xl select-none" title={badge.name}>
+        🌀
+      </span>
+    );
   }
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
+      key={src}
       src={src}
       alt={badge.name}
       className="w-full h-full object-contain p-1"
       loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
       onError={() => {
-        const m = src.match(/Blade\/(.+)\.webp$/);
-        if (m) {
-          let id = m[1];
-          if (/[RM]$/.test(id)) {
-            while (/[RM]$/.test(id)) id = id.slice(0, -1);
-            const next = src.replace(/Blade\/.+\.webp$/, `Blade/${id}.webp`);
-            if (next !== src) {
-              setSrc(next);
-              return;
-            }
-          }
+        if (idx + 1 < candidates.length) {
+          setIdx(idx + 1);
+        } else {
+          setFailed(true);
         }
-        setFailed(true);
       }}
     />
   );
@@ -70,6 +86,9 @@ export default function BeyCollection({ onBack }: { onBack: () => void }) {
     setStats(collectionStats());
   };
 
+  useEffect(() => {
+    try { syncCollectionToBattleApp(loadBeyCollection()); } catch {}
+  }, []);
   useEffect(() => {
     refresh();
   }, []);
@@ -169,12 +188,12 @@ export default function BeyCollection({ onBack }: { onBack: () => void }) {
         <p className="text-[10px] text-white/35 text-center leading-relaxed pb-4">
           圖片來源：
           <a
-            href="https://beyblade.phstudy.org/index.html"
+            href="https://csfclayton.github.io/beyblade-x-arena/"
             target="_blank"
             rel="noopener noreferrer"
             className="underline text-cyan-500/70"
           >
-            beyblade.phstudy.org
+            去挑戰塔對戰 →
           </a>
           （僅供學習收集展示）· 共 {stats.total} 枚
         </p>
